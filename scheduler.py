@@ -93,7 +93,7 @@ def create_precise_notification_job(notification_time: datetime, title: str = No
                 return job_id
             elif response.status_code == 429:
                 # Rate limiting - ждем и повторяем
-                wait_time = (attempt + 1) * 5  # 5, 10, 15 секунд
+                wait_time = (attempt + 1) * 10  # 10, 20, 30 секунд (увеличено с 5, 10, 15)
                 print(f"⏳ Rate limit (попытка {attempt + 1}/{retry_count}). Ждем {wait_time} сек...")
                 time.sleep(wait_time)
                 continue
@@ -211,7 +211,7 @@ def schedule_floating_island_sequence(start_date: datetime = None, count: int = 
         
         # Добавляем задержку чтобы избежать rate limiting
         if i < len(events):  # Не ждем после последнего элемента
-            time.sleep(3)  # Пауза 3 секунды между запросами
+            time.sleep(8)  # Увеличиваем паузу до 8 секунд между запросами
     
     print(f"\n📊 ИТОГИ ПЛАНИРОВАНИЯ:")
     print(f"✅ Успешно запланировано: {scheduled_count}")
