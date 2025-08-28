@@ -120,8 +120,10 @@ def format_notification_message(event):
     
     # Добавляем время следующего прибытия
     if next_event:
-        next_time = next_event['event_start'].strftime('%H:%M')
-        message += f"\n\nСледующее прибытие в {next_time}"
+        # Конвертируем в киевское время (UTC+2/+3)
+        kiev_tz = pytz.timezone('Europe/Kiev')
+        next_time_kiev = next_event['event_start'].astimezone(kiev_tz).strftime('%H:%M')
+        message += f"\n\nСледующее прибытие в {next_time_kiev}"
     
     return message
 
