@@ -16,6 +16,7 @@ on:
         - single-schedule
         - fastcron-schedule
         - fastcron-test
+        - test-notification
         - test
         - test-send
         - cleanup
@@ -134,6 +135,38 @@ jobs:
           echo "Планируем $COUNT событий через FastCron"
           python fastcron_scheduler_fixed.py schedule $COUNT
           echo "=== END FASTCRON SCHEDULING ==="
+
+  test-notification:
+    if: github.event.inputs.action == 'test-notification'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run notification test
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          FASTCRON_API_KEY: ${{ secrets.FASTCRON_API_KEY }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "=== TEST NOTIFICATION SYSTEM ==="
+          echo "Время запуска: $(date -u)"
+          echo "Запускаем полное тестирование уведомлений"
+          python test_notification.py full
+          echo "=== END TEST NOTIFICATION ==="
 
   fastcron-test:
     if: github.event.inputs.action == 'fastcron-test'
