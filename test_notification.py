@@ -58,18 +58,13 @@ def send_test_telegram_message():
     next_event = now_utc + timedelta(hours=8, minutes=20)
     next_kyiv = next_event.astimezone(kyiv_tz)
     
-    # Формируем тестовое сообщение согласно спецификации
-    message = f"""🏝️ ЕБУЧИЙ ШАР прибыл!
+    # Формируем тестовое сообщение в новом упрощенном формате
+    message = f"""🎈 ЕБУЧИЙ ШАР прибыл!
 
-⏰ Доступен сейчас:
-   🇺🇦 Киев: {now_kyiv.strftime('%H:%M')} ({now_kyiv.strftime('%d.%m')})
-   🌍 UTC: {now_utc.strftime('%H:%M')} ({now_utc.strftime('%d.%m')})
+Киев: {now_kyiv.strftime('%H:%M')}
+UTC: {now_utc.strftime('%H:%M')}
 
-⏳ Продолжительность: 30 минут
-   (до {(now_kyiv + timedelta(minutes=30)).strftime('%H:%M')} по Киеву)
-
-🧪 ТЕСТОВОЕ УВЕДОМЛЕНИЕ
-Следующее прибытие в {next_kyiv.strftime('%H:%M')}"""
+🧪 ТЕСТОВОЕ УВЕДОМЛЕНИЕ"""
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     
