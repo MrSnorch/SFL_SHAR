@@ -105,23 +105,23 @@ def get_next_notification_event():
 
 def format_notification_message(event):
     """Форматирует сообщение для уведомления"""
-    event_start = event['event_start']
-    event_end = event['event_end']
+    # Получаем время следующего события
+    now = datetime.now(pytz.UTC)
+    next_events = calculate_next_events(now, count=2)
     
-    # Форматируем дату и время
-    date_str = event_start.strftime('%d.%m.%Y')
-    start_time = event_start.strftime('%H:%M')
-    end_time = event_end.strftime('%H:%M')
+    # Ищем следующее событие после текущего
+    next_event = None
+    for next_ev in next_events:
+        if next_ev['event_start'] > event['event_start']:
+            next_event = next_ev
+            break
     
-    message = f"""🏝️ <b>Floating Island</b>
-
-🚨 Плавучий остров ПОЯВИЛСЯ!
-
-📅 <b>Дата:</b> {date_str}
-⏰ <b>Время:</b> {start_time} - {end_time} UTC
-⏱️ <b>Продолжительность:</b> 30 минут
-
-⚡ Остров доступен ПРЯМО СЕЙЧАС! 🏃‍♂️Ὂ8"""
+    message = "ЕБУЧИЙ ШАР прибыл!"
+    
+    # Добавляем время следующего прибытия
+    if next_event:
+        next_time = next_event['event_start'].strftime('%H:%M')
+        message += f"\n\nСледующее прибытие в {next_time}"
     
     return message
 
