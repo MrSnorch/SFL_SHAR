@@ -1,0 +1,119 @@
+name: Floating Island Notifications
+
+on:
+  repository_dispatch:
+    types: [floating_island_notification, floating_island_check, floating_island_schedule]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Действие для выполнения'
+        required: false
+        default: 'notify'
+        type: choice
+        options:
+        - notify
+        - schedule
+        - test
+        - cleanup
+      count:
+        description: 'Количество событий для планирования (только для schedule)'
+        required: false
+        default: '30'
+        type: string
+
+jobs:
+  notify:
+    if: github.event.action == 'floating_island_notification' || github.event.inputs.action == 'notify' || github.event.inputs.action == 'test'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pytz
+
+      - name: Run floating island bot
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+        run: |
+          echo "=== FLOATING ISLAND NOTIFICATION ==="
+          echo "Время запуска: $(date -u)"
+          if [ "${{ github.event.inputs.action }}" = "test" ]; then
+            echo "Тестовый режим:"
+            python floating_island_bot.py --test
+          else
+            echo "Режим уведомлений:"
+            python floating_island_bot.py
+          fi
+          echo "=== END NOTIFICATION ==="
+
+  schedule:
+    if: github.event.action == 'floating_island_schedule' || github.event.inputs.action == 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pytz
+
+      - name: Schedule floating island notifications
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+        run: |
+          echo "=== SCHEDULING FLOATING ISLAND ==="
+          echo "Время запуска: $(date -u)"
+          COUNT="${{ github.event.inputs.count || '30' }}"
+          echo "Планируем $COUNT событий"
+          python scheduler.py schedule $COUNT
+          echo "=== END SCHEDULING ==="
+
+  cleanup:
+    if: github.event.inputs.action == 'cleanup'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pytz
+
+      - name: Cleanup old jobs
+        env:
+          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+        run: |
+          echo "=== CLEANUP OLD JOBS ==="
+          echo "Время запуска: $(date -u)"
+          python scheduler.py cleanup
+          echo "=== END CLEANUP ===""
