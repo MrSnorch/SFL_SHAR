@@ -4,6 +4,7 @@
 import os
 import requests
 import json
+import time
 from datetime import datetime, timedelta
 import pytz
 
@@ -14,9 +15,9 @@ CRONJOB_BASE_URL = 'https://api.cron-job.org'
 # URL для вызова вашего бота
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 
-def create_precise_notification_job(notification_time: datetime, title: str = None):
+def create_precise_notification_job(notification_time: datetime, title: str = None, retry_count: int = 3):
     """
-    Создает точное задание в cron-job.org для указанного времени
+    Создает точное задание в cron-job.org для указанного времени с обработкой rate limiting
     """
     if not CRONJOB_API_KEY:
         print("❌ Не установлена переменная CRONJOB_API_KEY")
@@ -74,28 +75,42 @@ def create_precise_notification_job(notification_time: datetime, title: str = No
         }
     }
     
-    try:
-        response = requests.put(
-            f"{CRONJOB_BASE_URL}/jobs",
-            headers=headers,
-            json=job_data,
-            timeout=30
-        )
-        
-        if response.status_code in [200, 201]:
-            result = response.json()
-            job_id = result.get('jobId')
-            print(f"✅ Точное задание создано! Job ID: {job_id}")
-            print(f"🕐 Время: {notification_time.strftime('%d.%m.%Y %H:%M')} UTC")
-            return job_id
-        else:
-            print(f"❌ Ошибка создания задания: {response.status_code}")
-            print(f"Ответ: {response.text}")
-            return False
+    # Повторяем попытки при rate limiting
+    for attempt in range(retry_count):
+        try:
+            response = requests.put(
+                f"{CRONJOB_BASE_URL}/jobs",
+                headers=headers,
+                json=job_data,
+                timeout=30
+            )
             
-    except Exception as e:
-        print(f"❌ Исключение при создании задания: {e}")
-        return False
+            if response.status_code in [200, 201]:
+                result = response.json()
+                job_id = result.get('jobId')
+                print(f"✅ Точное задание создано! Job ID: {job_id}")
+                print(f"🕐 Время: {notification_time.strftime('%d.%m.%Y %H:%M')} UTC")
+                return job_id
+            elif response.status_code == 429:
+                # Rate limiting - ждем и повторяем
+                wait_time = (attempt + 1) * 5  # 5, 10, 15 секунд
+                print(f"⏳ Rate limit (попытка {attempt + 1}/{retry_count}). Ждем {wait_time} сек...")
+                time.sleep(wait_time)
+                continue
+            else:
+                print(f"❌ Ошибка создания задания: {response.status_code}")
+                print(f"Ответ: {response.text}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Исключение при создании задания: {e}")
+            if attempt < retry_count - 1:
+                time.sleep(2)
+                continue
+            return False
+    
+    print(f"❌ Не удалось создать задание после {retry_count} попыток")
+    return False
 
 def cleanup_old_jobs():
     """
@@ -193,6 +208,10 @@ def schedule_floating_island_sequence(start_date: datetime = None, count: int = 
         else:
             failed_count += 1
             print(f"   ❌ Ошибка планирования")
+        
+        # Добавляем задержку чтобы избежать rate limiting
+        if i < len(events):  # Не ждем после последнего элемента
+            time.sleep(3)  # Пауза 3 секунды между запросами
     
     print(f"\n📊 ИТОГИ ПЛАНИРОВАНИЯ:")
     print(f"✅ Успешно запланировано: {scheduled_count}")
