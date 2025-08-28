@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 import requests
 import json
 import time
@@ -14,17 +15,30 @@ CRONJOB_BASE_URL = 'https://api.cron-job.org'
 
 # URL для вызова вашего бота
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
+GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
 
-def create_precise_notification_job(notification_time: datetime, title: str = None, retry_count: int = 3):
-    """
-    Создает точное задание в cron-job.org для указанного времени с обработкой rate limiting
-    """
+def validate_environment():
+    """Проверяет настройки переменных окружения"""
     if not CRONJOB_API_KEY:
         print("❌ Не установлена переменная CRONJOB_API_KEY")
         return False
     
     if not WEBHOOK_URL:
         print("❌ Не установлена переменная WEBHOOK_URL")
+        return False
+    
+    if not GITHUB_TOKEN:
+        print("❌ Не установлена переменная GITHUB_TOKEN")
+        return False
+    
+    print("✅ Все переменные окружения настроены")
+    return True
+
+def create_precise_notification_job(notification_time: datetime, title: str = None, retry_count: int = 3):
+    """
+    Создает точное задание в cron-job.org для указанного времени с улучшенной обработкой rate limiting
+    """
+    if not validate_environment():
         return False
     
     # Форматируем время для cron-job.org
@@ -57,12 +71,16 @@ def create_precise_notification_job(notification_time: datetime, title: str = No
             'requestMethod': 1,  # POST
             'requestHeaders': [
                 {
-                    'name': 'Content-Type',
-                    'value': 'application/json'
+                    'name': 'Authorization',
+                    'value': f'token {GITHUB_TOKEN}'
                 },
                 {
-                    'name': 'X-Notification-Type',
-                    'value': 'floating-island-precise'
+                    'name': 'Accept',
+                    'value': 'application/vnd.github.v3+json'
+                },
+                {
+                    'name': 'Content-Type',
+                    'value': 'application/json'
                 }
             ],
             'requestBody': json.dumps({
@@ -75,7 +93,7 @@ def create_precise_notification_job(notification_time: datetime, title: str = No
         }
     }
     
-    # Повторяем попытки при rate limiting
+    # Повторяем попытки при rate limiting с увеличенными паузами
     for attempt in range(retry_count):
         try:
             response = requests.put(
@@ -92,20 +110,31 @@ def create_precise_notification_job(notification_time: datetime, title: str = No
                 print(f"🕐 Время: {notification_time.strftime('%d.%m.%Y %H:%M')} UTC")
                 return job_id
             elif response.status_code == 429:
-                # Rate limiting - ждем и повторяем
-                wait_time = (attempt + 1) * 10  # 10, 20, 30 секунд (увеличено с 5, 10, 15)
+                # Rate limiting - увеличиваем время ожидания прогрессивно
+                wait_time = (attempt + 1) * 20  # 20, 40, 60 секунд
                 print(f"⏳ Rate limit (попытка {attempt + 1}/{retry_count}). Ждем {wait_time} сек...")
                 time.sleep(wait_time)
                 continue
+            elif response.status_code == 401:
+                print(f"❌ Ошибка аутентификации cron-job.org. Проверьте API ключ")
+                return False
+            elif response.status_code == 400:
+                print(f"❌ Некорректные данные запроса: {response.text}")
+                return False
             else:
                 print(f"❌ Ошибка создания задания: {response.status_code}")
                 print(f"Ответ: {response.text}")
                 return False
                 
-        except Exception as e:
-            print(f"❌ Исключение при создании задания: {e}")
+        except requests.exceptions.Timeout:
+            print(f"⏰ Таймаут запроса (попытка {attempt + 1}/{retry_count})")
             if attempt < retry_count - 1:
-                time.sleep(2)
+                time.sleep(10)
+                continue
+        except Exception as e:
+            print(f"❌ Исключение при создании задания (попытка {attempt + 1}): {e}")
+            if attempt < retry_count - 1:
+                time.sleep(5)
                 continue
             return False
     
@@ -114,10 +143,9 @@ def create_precise_notification_job(notification_time: datetime, title: str = No
 
 def cleanup_old_jobs():
     """
-    Удаляет старые задания Floating Island из cron-job.org
+    Удаляет старые задания Floating Island из cron-job.org с улучшенной логикой
     """
-    if not CRONJOB_API_KEY:
-        print("❌ Не установлена переменная CRONJOB_API_KEY")
+    if not validate_environment():
         return False
     
     headers = {
@@ -135,14 +163,22 @@ def cleanup_old_jobs():
         
         jobs = response.json().get('jobs', [])
         deleted_count = 0
+        now = datetime.now(pytz.UTC)
+        
+        print(f"📋 Найдено {len(jobs)} заданий. Анализируем...")
         
         for job in jobs:
             title = job.get('title', '')
             job_id = job.get('jobId')
             
-            # Ищем задания Floating Island
+            # Ищем только задания Floating Island
             if 'Floating Island' in title and job_id:
-                # Удаляем все старые задания (они уже выполнились или неактуальны)
+                # Проверяем, не является ли это основным заданием (Checker)
+                if 'Checker' in title or 'Notifications Checker' in title:
+                    print(f"⚠️ Пропускаем основное задание: {title}")
+                    continue
+                
+                # Удаляем конкретные задания (они одноразовые)
                 try:
                     delete_response = requests.delete(
                         f"{CRONJOB_BASE_URL}/jobs/{job_id}",
@@ -151,15 +187,18 @@ def cleanup_old_jobs():
                     )
                     
                     if delete_response.status_code == 200:
-                        print(f"🗑️ Удалено старое задание: {title} (ID: {job_id})")
+                        print(f"🗑️ Удалено задание: {title} (ID: {job_id})")
                         deleted_count += 1
                     else:
                         print(f"⚠️ Не удалось удалить задание {job_id}: {delete_response.status_code}")
                         
                 except Exception as e:
                     print(f"⚠️ Ошибка удаления задания {job_id}: {e}")
+                
+                # Пауза между удалениями чтобы избежать rate limiting
+                time.sleep(2)
         
-        print(f"✅ Очистка завершена. Удалено {deleted_count} старых заданий")
+        print(f"✅ Очистка завершена. Удалено {deleted_count} заданий")
         return True
         
     except Exception as e:
@@ -168,24 +207,38 @@ def cleanup_old_jobs():
 
 def schedule_floating_island_sequence(start_date: datetime = None, count: int = 30):
     """
-    Планирует последовательность уведомлений Floating Island
+    Планирует последовательность уведомлений Floating Island с улучшенной обработкой
     """
-    from floating_island_bot import calculate_next_events
+    try:
+        from floating_island_bot import calculate_next_events
+    except ImportError:
+        print("❌ Не удалось импортировать floating_island_bot")
+        return False
+    
+    if not validate_environment():
+        return False
     
     if not start_date:
         start_date = datetime.now(pytz.UTC)
     
-    print(f"📅 Планируем {count} уведомлений Floating Island, начиная с {start_date.strftime('%d.%m.%Y %H:%M')} UTC")
+    print(f"📅 Планируем {count} уведомлений Floating Island")
+    print(f"⏰ Начиная с: {start_date.strftime('%d.%m.%Y %H:%M')} UTC")
+    print("=" * 60)
     
     # Сначала очищаем старые задания
     print("🧹 Очищаем старые задания...")
     cleanup_old_jobs()
+    print()
     
     # Получаем события для планирования
     events = calculate_next_events(start_date, count=count)
     
     scheduled_count = 0
     failed_count = 0
+    skipped_count = 0
+    
+    print(f"📊 Обрабатываем {len(events)} событий...")
+    print("-" * 60)
     
     for i, event in enumerate(events, 1):
         notification_time = event['notification_time']
@@ -193,11 +246,18 @@ def schedule_floating_island_sequence(start_date: datetime = None, count: int = 
         
         # Пропускаем события в прошлом
         if notification_time <= start_date:
+            print(f"⏭️ Событие {i}: пропускаем (в прошлом)")
+            skipped_count += 1
             continue
         
-        print(f"\n📌 Планируем событие {i}:")
-        print(f"   Уведомление: {notification_time.strftime('%d.%m.%Y %H:%M')} UTC")
-        print(f"   Событие: {event_start.strftime('%d.%m.%Y %H:%M')} UTC")
+        print(f"\n📌 Планируем событие {i}/{len(events)}:")
+        print(f"   📢 Уведомление: {notification_time.strftime('%d.%m.%Y %H:%M')} UTC")
+        print(f"   🏝️ Событие: {event_start.strftime('%d.%m.%Y %H:%M')} UTC")
+        
+        # Вычисляем время до уведомления
+        time_until = (notification_time - start_date).total_seconds()
+        hours_until = int(time_until // 3600)
+        print(f"   ⏰ Через: {hours_until} часов")
         
         title = f"Floating Island {notification_time.strftime('%d.%m %H:%M')} UTC"
         job_id = create_precise_notification_job(notification_time, title)
@@ -209,23 +269,35 @@ def schedule_floating_island_sequence(start_date: datetime = None, count: int = 
             failed_count += 1
             print(f"   ❌ Ошибка планирования")
         
-        # Добавляем задержку чтобы избежать rate limiting
-        if i < len(events):  # Не ждем после последнего элемента
-            time.sleep(8)  # Увеличиваем паузу до 8 секунд между запросами
+        # Прогрессивная пауза между запросами для избежания rate limiting
+        if i < len(events) and i % 5 == 0:
+            # Большая пауза каждые 5 заданий
+            print(f"   ⏸️ Пауза 30 секунд (каждые 5 заданий)...")
+            time.sleep(30)
+        elif i < len(events):
+            # Обычная пауза
+            time.sleep(12)  # Увеличиваем паузу до 12 секунд
     
-    print(f"\n📊 ИТОГИ ПЛАНИРОВАНИЯ:")
+    print(f"\n" + "=" * 60)
+    print(f"📊 ИТОГИ ПЛАНИРОВАНИЯ:")
     print(f"✅ Успешно запланировано: {scheduled_count}")
     print(f"❌ Ошибок: {failed_count}")
-    print(f"📋 Всего событий: {scheduled_count + failed_count}")
+    print(f"⏭️ Пропущено (прошлые): {skipped_count}")
+    print(f"📋 Обработано событий: {len(events)}")
     
-    return scheduled_count > 0
+    if scheduled_count > 0:
+        print(f"\n🎉 Система готова к работе!")
+        print(f"📱 Уведомления будут отправляться автоматически")
+        return True
+    else:
+        print(f"\n⚠️ Не удалось запланировать ни одного события")
+        return False
 
 def get_scheduled_jobs():
     """
-    Показывает все запланированные задания Floating Island
+    Показывает все запланированные задания Floating Island с улучшенным форматированием
     """
-    if not CRONJOB_API_KEY:
-        print("❌ Не установлена переменная CRONJOB_API_KEY")
+    if not validate_environment():
         return
     
     headers = {
@@ -245,16 +317,53 @@ def get_scheduled_jobs():
                 return
             
             print(f"📋 Найдено {len(floating_jobs)} заданий Floating Island:")
-            print("-" * 60)
+            print("=" * 80)
+            
+            # Разделяем на категории
+            checker_jobs = []
+            scheduled_jobs = []
             
             for job in floating_jobs:
-                job_id = job.get('jobId')
-                title = job.get('title', 'Без названия')
-                enabled = job.get('enabled', False)
+                if 'Checker' in job.get('title', ''):
+                    checker_jobs.append(job)
+                else:
+                    scheduled_jobs.append(job)
+            
+            # Показываем основные задания
+            if checker_jobs:
+                print("🔄 ОСНОВНЫЕ ЗАДАНИЯ (постоянные):")
+                for job in checker_jobs:
+                    job_id = job.get('jobId')
+                    title = job.get('title', 'Без названия')
+                    enabled = job.get('enabled', False)
+                    
+                    status = "🟢 Активно" if enabled else "🔴 Отключено"
+                    print(f"  {status} {title} (ID: {job_id})")
+                print()
+            
+            # Показываем запланированные уведомления
+            if scheduled_jobs:
+                print("📅 ЗАПЛАНИРОВАННЫЕ УВЕДОМЛЕНИЯ:")
                 
-                status = "🟢 Активно" if enabled else "🔴 Отключено"
-                print(f"{status} {title} (ID: {job_id})")
+                # Сортируем по времени
+                now = datetime.now(pytz.UTC)
+                scheduled_jobs.sort(key=lambda x: x.get('title', ''))
                 
+                for job in scheduled_jobs[:10]:  # Показываем первые 10
+                    job_id = job.get('jobId')
+                    title = job.get('title', 'Без названия')
+                    enabled = job.get('enabled', False)
+                    
+                    status = "🟢" if enabled else "🔴"
+                    print(f"  {status} {title} (ID: {job_id})")
+                
+                if len(scheduled_jobs) > 10:
+                    print(f"  ... и еще {len(scheduled_jobs) - 10} заданий")
+            
+            print(f"\n📊 ВСЕГО: {len(floating_jobs)} заданий")
+            
+        elif response.status_code == 401:
+            print("❌ Неверный API ключ cron-job.org")
         else:
             print(f"❌ Ошибка получения списка: {response.status_code}")
             print(f"Ответ: {response.text}")
@@ -262,37 +371,59 @@ def get_scheduled_jobs():
     except Exception as e:
         print(f"❌ Исключение при получении списка: {e}")
 
-if __name__ == "__main__":
-    import sys
-    
+def main():
+    """Основная функция с CLI интерфейсом"""
     if len(sys.argv) < 2:
-        print("🤖 ПЛАНИРОВЩИК FLOATING ISLAND")
-        print("=" * 40)
-        print("Доступные команды:")
-        print("  python scheduler.py schedule [count] - Запланировать уведомления (по умолчанию 30)")
-        print("  python scheduler.py list             - Показать запланированные задания")
-        print("  python scheduler.py cleanup          - Очистить старые задания")
-        print("  python scheduler.py single DATETIME  - Запланировать одно уведомление")
-        print("")
+        print("📅 SCHEDULER - Планировщик заданий Floating Island")
+        print("=" * 50)
+        print("Использование:")
+        print("  python scheduler.py schedule [количество]  - запланировать события (по умолчанию 30)")
+        print("  python scheduler.py list                   - показать запланированные задания")
+        print("  python scheduler.py cleanup                - очистить старые задания")
+        print("  python scheduler.py test                   - тестировать подключения")
+        print()
         print("Примеры:")
-        print("  python scheduler.py schedule 10")
-        print("  python scheduler.py single '2025-08-28 22:00'")
-    else:
-        command = sys.argv[1].lower()
-        
-        if command == 'schedule':
-            count = int(sys.argv[2]) if len(sys.argv) > 2 else 30
-            schedule_floating_island_sequence(count=count)
-        elif command == 'list':
-            get_scheduled_jobs()
-        elif command == 'cleanup':
-            cleanup_old_jobs()
-        elif command == 'single' and len(sys.argv) > 2:
-            datetime_str = sys.argv[2]
+        print("  python scheduler.py schedule 50    # Запланировать 50 событий")
+        print("  python scheduler.py schedule       # Запланировать 30 событий")
+        return
+    
+    command = sys.argv[1].lower()
+    
+    if command == 'schedule':
+        count = 30
+        if len(sys.argv) > 2:
             try:
-                dt = datetime.fromisoformat(datetime_str.replace(' ', 'T')).replace(tzinfo=pytz.UTC)
-                create_precise_notification_job(dt)
+                count = int(sys.argv[2])
+                if count <= 0 or count > 100:
+                    print("❌ Количество должно быть от 1 до 100")
+                    return
             except ValueError:
-                print("❌ Неверный формат даты. Используйте: 'YYYY-MM-DD HH:MM'")
-        else:
-            print("❌ Неизвестная команда")
+                print("❌ Некорректное количество. Используйте число от 1 до 100")
+                return
+        
+        print(f"🚀 Запускаем планирование {count} событий...")
+        schedule_floating_island_sequence(count=count)
+        
+    elif command == 'list':
+        get_scheduled_jobs()
+        
+    elif command == 'cleanup':
+        print("🧹 Запускаем очистку старых заданий...")
+        cleanup_old_jobs()
+        
+    elif command == 'test':
+        print("🔧 ТЕСТИРОВАНИЕ СИСТЕМЫ")
+        print("=" * 50)
+        if validate_environment():
+            try:
+                from setup_cronjob import test_cronjob_connection, test_github_connection
+                test_cronjob_connection()
+                test_github_connection()
+            except ImportError:
+                print("⚠️ Модуль setup_cronjob недоступен для тестирования")
+        
+    else:
+        print("❌ Неизвестная команда. Используйте: schedule, list, cleanup, test")
+
+if __name__ == "__main__":
+    main()
