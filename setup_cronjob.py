@@ -4,6 +4,7 @@
 import os
 import requests
 import json
+import time
 from datetime import datetime, timedelta
 import pytz
 
@@ -11,19 +12,109 @@ import pytz
 CRONJOB_API_KEY = os.environ.get('CRONJOB_API_KEY')
 CRONJOB_BASE_URL = 'https://api.cron-job.org'
 
-# URL для вызова вашего бота (через GitHub Actions или другой webhook)
-WEBHOOK_URL = os.environ.get('WEBHOOK_URL')  # Например: https://api.github.com/repos/username/repo/dispatches
+# URL для вызова вашего бота (через GitHub Actions)
+# Формат: https://api.github.com/repos/{owner}/{repo}/dispatches
+WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
+GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
 
-def create_single_notification_job(notification_time: datetime):
-    """
-    Создает одно точное задание для уведомления в указанное время
-    """
+def validate_environment():
+    """Проверяет настройки переменных окружения"""
+    errors = []
+    
     if not CRONJOB_API_KEY:
-        print("❌ Не установлена переменная CRONJOB_API_KEY")
-        return False
+        errors.append("❌ Не установлена переменная CRONJOB_API_KEY")
     
     if not WEBHOOK_URL:
-        print("❌ Не установлена переменная WEBHOOK_URL")
+        errors.append("❌ Не установлена переменная WEBHOOK_URL")
+    elif not WEBHOOK_URL.startswith('https://api.github.com/repos/'):
+        errors.append("❌ WEBHOOK_URL должен быть GitHub API URL: https://api.github.com/repos/{owner}/{repo}/dispatches")
+    
+    if not GITHUB_TOKEN:
+        errors.append("❌ Не установлена переменная GITHUB_TOKEN")
+    
+    if errors:
+        print("\n".join(errors))
+        print("\n💡 Инструкции по настройке:")
+        print("1. CRONJOB_API_KEY - API ключ с сайта cron-job.org")
+        print("2. WEBHOOK_URL - https://api.github.com/repos/{username}/{repo}/dispatches")
+        print("3. GITHUB_TOKEN - Personal Access Token с правами 'repo' и 'workflow'")
+        return False
+    
+    return True
+
+def test_cronjob_connection():
+    """Тестирует подключение к cron-job.org API"""
+    if not CRONJOB_API_KEY:
+        return False
+    
+    headers = {
+        'Authorization': f'Bearer {CRONJOB_API_KEY}',
+        'Content-Type': 'application/json'
+    }
+    
+    try:
+        response = requests.get(f"{CRONJOB_BASE_URL}/jobs", headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            print("✅ Подключение к cron-job.org API успешно")
+            return True
+        elif response.status_code == 401:
+            print("❌ Неверный API ключ cron-job.org")
+            return False
+        else:
+            print(f"⚠️ Проблема с подключением к cron-job.org: {response.status_code}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Ошибка подключения к cron-job.org: {e}")
+        return False
+
+def test_github_connection():
+    """Тестирует подключение к GitHub API"""
+    if not WEBHOOK_URL or not GITHUB_TOKEN:
+        return False
+    
+    headers = {
+        'Authorization': f'token {GITHUB_TOKEN}',
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+    }
+    
+    test_payload = {
+        'event_type': 'test_connection',
+        'client_payload': {
+            'test': True,
+            'timestamp': datetime.now(pytz.UTC).isoformat()
+        }
+    }
+    
+    try:
+        response = requests.post(WEBHOOK_URL, headers=headers, json=test_payload, timeout=10)
+        
+        if response.status_code == 204:
+            print("✅ Подключение к GitHub API успешно")
+            return True
+        elif response.status_code == 401:
+            print("❌ Неверный GitHub токен")
+            return False
+        elif response.status_code == 404:
+            print("❌ Неверный URL репозитория или нет прав доступа")
+            return False
+        else:
+            print(f"⚠️ Проблема с подключением к GitHub: {response.status_code}")
+            print(f"Ответ: {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Ошибка подключения к GitHub: {e}")
+        return False
+
+def create_single_notification_job(notification_time: datetime, retry_count: int = 3):
+    """
+    Создает одно точное задание для уведомления в указанное время
+    С улучшенной обработкой rate limiting и ошибок
+    """
+    if not validate_environment():
         return False
     
     # Форматируем время для cron
@@ -52,15 +143,19 @@ def create_single_notification_job(notification_time: datetime):
                 'months': [month],
                 'wdays': [-1]
             },
-            'requestMethod': 1,
+            'requestMethod': 1,  # POST
             'requestHeaders': [
+                {
+                    'name': 'Authorization',
+                    'value': f'token {GITHUB_TOKEN}'
+                },
+                {
+                    'name': 'Accept',
+                    'value': 'application/vnd.github.v3+json'
+                },
                 {
                     'name': 'Content-Type',
                     'value': 'application/json'
-                },
-                {
-                    'name': 'X-Notification-Type',
-                    'value': 'floating-island-auto'
                 }
             ],
             'requestBody': json.dumps({
@@ -73,26 +168,44 @@ def create_single_notification_job(notification_time: datetime):
         }
     }
     
-    try:
-        response = requests.put(
-            f"{CRONJOB_BASE_URL}/jobs",
-            headers=headers,
-            json=job_data,
-            timeout=30
-        )
-        
-        if response.status_code in [200, 201]:
-            result = response.json()
-            job_id = result.get('jobId')
-            print(f"✅ Автопланирование: задание создано (ID: {job_id})")
-            return job_id
-        else:
-            print(f"❌ Ошибка автопланирования: {response.status_code}")
-            return False
+    for attempt in range(retry_count):
+        try:
+            response = requests.put(
+                f"{CRONJOB_BASE_URL}/jobs",
+                headers=headers,
+                json=job_data,
+                timeout=30
+            )
             
-    except Exception as e:
-        print(f"❌ Исключение автопланирования: {e}")
-        return False
+            if response.status_code in [200, 201]:
+                result = response.json()
+                job_id = result.get('jobId')
+                print(f"✅ Автопланирование: задание создано (ID: {job_id})")
+                print(f"🕐 Время: {notification_time.strftime('%d.%m.%Y %H:%M')} UTC")
+                return job_id
+            elif response.status_code == 429:
+                # Rate limiting - увеличиваем время ожидания
+                wait_time = (attempt + 1) * 15  # 15, 30, 45 секунд
+                print(f"⏳ Rate limit (попытка {attempt + 1}/{retry_count}). Ждем {wait_time} сек...")
+                time.sleep(wait_time)
+                continue
+            elif response.status_code == 401:
+                print(f"❌ Ошибка аутентификации cron-job.org. Проверьте API ключ")
+                return False
+            else:
+                print(f"❌ Ошибка автопланирования: {response.status_code}")
+                print(f"Ответ: {response.text}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Исключение автопланирования (попытка {attempt + 1}): {e}")
+            if attempt < retry_count - 1:
+                time.sleep(5)
+                continue
+            return False
+    
+    print(f"❌ Не удалось создать задание после {retry_count} попыток")
+    return False
 
 def create_cronjob_schedule():
     """
@@ -100,12 +213,15 @@ def create_cronjob_schedule():
     Использует интервал каждые 20 минут для покрытия всех возможных времен
     """
     
-    if not CRONJOB_API_KEY:
-        print("❌ Не установлена переменная CRONJOB_API_KEY")
+    if not validate_environment():
         return False
     
-    if not WEBHOOK_URL:
-        print("❌ Не установлена переменная WEBHOOK_URL")
+    print("🔧 Тестируем подключения...")
+    
+    if not test_cronjob_connection():
+        return False
+    
+    if not test_github_connection():
         return False
     
     headers = {
@@ -114,12 +230,11 @@ def create_cronjob_schedule():
     }
     
     # Создаем задание, которое запускается каждые 20 минут
-    # Это обеспечит точность уведомлений в пределах 20 минут
     job_data = {
         'job': {
             'url': WEBHOOK_URL,
             'enabled': True,
-            'title': 'Floating Island Notifications',
+            'title': 'Floating Island Notifications Checker',
             'schedule': {
                 'timezone': 'UTC',
                 'hours': [-1],  # каждый час
@@ -131,13 +246,23 @@ def create_cronjob_schedule():
             'requestMethod': 1,  # POST
             'requestHeaders': [
                 {
+                    'name': 'Authorization',
+                    'value': f'token {GITHUB_TOKEN}'
+                },
+                {
+                    'name': 'Accept',
+                    'value': 'application/vnd.github.v3+json'
+                },
+                {
                     'name': 'Content-Type',
                     'value': 'application/json'
                 }
             ],
             'requestBody': json.dumps({
                 'event_type': 'floating_island_check',
-                'client_payload': {}
+                'client_payload': {
+                    'type': 'periodic_check'
+                }
             })
         }
     }
@@ -153,9 +278,10 @@ def create_cronjob_schedule():
         if response.status_code in [200, 201]:
             result = response.json()
             job_id = result.get('jobId')
-            print(f"✅ Задание создано успешно! Job ID: {job_id}")
+            print(f"✅ Основное задание создано успешно! Job ID: {job_id}")
             print(f"🔗 URL: {WEBHOOK_URL}")
             print(f"⏰ Расписание: каждые 20 минут (:00, :20, :40)")
+            print(f"🔑 GitHub Token: {GITHUB_TOKEN[:10]}...{GITHUB_TOKEN[-4:]}")
             return True
         else:
             print(f"❌ Ошибка создания задания: {response.status_code}")
@@ -167,7 +293,7 @@ def create_cronjob_schedule():
         return False
 
 def list_existing_jobs():
-    """Показывает существующие задания"""
+    """Показывает существующие задания с улучшенным форматированием"""
     if not CRONJOB_API_KEY:
         print("❌ Не установлена переменная CRONJOB_API_KEY")
         return
@@ -183,17 +309,39 @@ def list_existing_jobs():
         if response.status_code == 200:
             jobs = response.json().get('jobs', [])
             print(f"📋 Найдено {len(jobs)} заданий:")
+            print("=" * 80)
+            
+            floating_jobs = []
+            other_jobs = []
             
             for job in jobs:
-                job_id = job.get('jobId')
-                title = job.get('title', 'Без названия')
-                enabled = job.get('enabled', False)
-                url = job.get('url', '')
+                if 'Floating Island' in job.get('title', ''):
+                    floating_jobs.append(job)
+                else:
+                    other_jobs.append(job)
+            
+            if floating_jobs:
+                print(f"🏝️ Floating Island задания ({len(floating_jobs)}):")
+                for job in floating_jobs:
+                    job_id = job.get('jobId')
+                    title = job.get('title', 'Без названия')
+                    enabled = job.get('enabled', False)
+                    
+                    status = "🟢 Активно" if enabled else "🔴 Отключено"
+                    print(f"  {status} ID: {job_id} - {title}")
+            
+            if other_jobs:
+                print(f"\n📌 Другие задания ({len(other_jobs)}):")
+                for job in other_jobs:
+                    job_id = job.get('jobId')
+                    title = job.get('title', 'Без названия')
+                    enabled = job.get('enabled', False)
+                    
+                    status = "🟢 Активно" if enabled else "🔴 Отключено"
+                    print(f"  {status} ID: {job_id} - {title}")
                 
-                status = "🟢 Активно" if enabled else "🔴 Отключено"
-                print(f"  {status} ID: {job_id} - {title}")
-                print(f"    URL: {url}")
-                
+        elif response.status_code == 401:
+            print("❌ Неверный API ключ cron-job.org")
         else:
             print(f"❌ Ошибка получения списка: {response.status_code}")
             print(f"Ответ: {response.text}")
@@ -202,7 +350,7 @@ def list_existing_jobs():
         print(f"❌ Исключение при получении списка: {e}")
 
 def delete_job(job_id: str):
-    """Удаляет задание по ID"""
+    """Удаляет задание по ID с подтверждением"""
     if not CRONJOB_API_KEY:
         print("❌ Не установлена переменная CRONJOB_API_KEY")
         return False
@@ -218,6 +366,9 @@ def delete_job(job_id: str):
         if response.status_code == 200:
             print(f"✅ Задание {job_id} удалено успешно")
             return True
+        elif response.status_code == 404:
+            print(f"❌ Задание {job_id} не найдено")
+            return False
         else:
             print(f"❌ Ошибка удаления задания: {response.status_code}")
             print(f"Ответ: {response.text}")
@@ -227,96 +378,37 @@ def delete_job(job_id: str):
         print(f"❌ Исключение при удалении задания: {e}")
         return False
 
-def setup_github_webhook():
-    """
-    Инструкции по настройке GitHub webhook для работы с cron-job.org
-    """
-    print("🔧 НАСТРОЙКА GITHUB WEBHOOK")
-    print("=" * 50)
-    print()
-    print("1. Создайте GitHub Personal Access Token:")
-    print("   - Перейдите в Settings → Developer settings → Personal access tokens")
-    print("   - Создайте токен с правами 'repo' и 'workflow'")
-    print("   - Сохраните токен как переменную окружения GITHUB_TOKEN")
-    print()
-    print("2. Создайте workflow файл .github/workflows/floating-island.yml:")
-    print()
-    
-    workflow_content = """name: Floating Island Notifications
-
-on:
-  repository_dispatch:
-    types: [floating_island_check]
-  workflow_dispatch:
-
-jobs:
-  notify:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.11
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests pytz
-
-      - name: Run floating island bot
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          echo "=== FLOATING ISLAND CHECK ==="
-          python floating_island_bot.py
-          echo "=== END CHECK ==="
-"""
-    
-    print(workflow_content)
-    print()
-    print("3. Добавьте секреты в GitHub:")
-    print("   - TELEGRAM_BOT_TOKEN: токен вашего Telegram бота")
-    print("   - TELEGRAM_CHAT_ID: ID чата для уведомлений")
-    print()
-    print("4. URL для webhook будет:")
-    print("   https://api.github.com/repos/USERNAME/REPOSITORY/dispatches")
-    print("   (замените USERNAME и REPOSITORY на ваши)")
-    print()
-    print("5. Установите переменные окружения:")
-    print("   - CRONJOB_API_KEY: ключ API от cron-job.org")
-    print("   - WEBHOOK_URL: URL из пункта 4")
-
 def main():
-    """Основная функция меню"""
+    """Основная функция с CLI интерфейсом"""
     import sys
     
     if len(sys.argv) < 2:
-        print("🤖 НАСТРОЙКА CRON-JOB.ORG ДЛЯ FLOATING ISLAND")
+        print("🔧 SETUP CRONJOB - Управление заданиями cron-job.org")
         print("=" * 50)
-        print("Доступные команды:")
-        print("  python setup_cronjob.py create    - Создать новое задание")
-        print("  python setup_cronjob.py list      - Показать существующие задания")
-        print("  python setup_cronjob.py delete ID - Удалить задание по ID")
-        print("  python setup_cronjob.py setup     - Инструкции по настройке")
+        print("Использование:")
+        print("  python setup_cronjob.py list        - показать все задания")
+        print("  python setup_cronjob.py create      - создать основное задание")
+        print("  python setup_cronjob.py delete <ID> - удалить задание по ID")
+        print("  python setup_cronjob.py test        - тестировать подключения")
         return
     
     command = sys.argv[1].lower()
     
-    if command == 'create':
-        create_cronjob_schedule()
-    elif command == 'list':
+    if command == 'list':
         list_existing_jobs()
+    elif command == 'create':
+        create_cronjob_schedule()
     elif command == 'delete' and len(sys.argv) > 2:
         job_id = sys.argv[2]
         delete_job(job_id)
-    elif command == 'setup':
-        setup_github_webhook()
+    elif command == 'test':
+        print("🔧 ТЕСТИРОВАНИЕ ПОДКЛЮЧЕНИЙ")
+        print("=" * 50)
+        validate_environment()
+        test_cronjob_connection()
+        test_github_connection()
     else:
-        print("❌ Неизвестная команда. Используйте: create, list, delete, setup")
+        print("❌ Неизвестная команда. Используйте: list, create, delete <ID>, test")
 
 if __name__ == "__main__":
     main()
