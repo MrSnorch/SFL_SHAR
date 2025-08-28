@@ -74,7 +74,7 @@ def calculate_next_events(from_time: datetime, count: int = 10):
 def get_current_notification_event():
     """Получает событие, которое начинается сейчас (в пределах ±2 минут)"""
     now = datetime.now(pytz.UTC)
-    tolerance = timedelta(minutes=2)  # Допуск ±2 минуты
+    tolerance = timedelta(minutes=5)  # Допуск ±5 минут
     
     print(f"🔍 Проверяем время появления острова: {now.strftime('%Y-%m-%d %H:%M:%S')} UTC")
     
@@ -89,7 +89,7 @@ def get_current_notification_event():
             print(f"✅ Найдено событие для уведомления: разница {time_diff:.0f} секунд")
             return event
     
-    print(f"❌ Не найдено событий для уведомления (допуск ±{tolerance.total_seconds():.0f} секунд)")
+    print(f"❌ Не найдено событий для уведомления (допуск ±{tolerance.total_seconds():.0f} секунд)"))
     return None
 
 def get_next_notification_event():
