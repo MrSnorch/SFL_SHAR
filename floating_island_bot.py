@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 import requests
 import json
 from datetime import datetime, timedelta
@@ -15,13 +16,15 @@ CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
 # Первое событие: 19.08.2025 16:00 UTC (время появления острова)
 BASE_EVENT_TIME = datetime(2025, 8, 19, 16, 0, 0, tzinfo=pytz.UTC)
 EVENT_INTERVAL = timedelta(hours=8, minutes=20)  # Интервал между событиями
-NOTIFICATION_ADVANCE = timedelta(minutes=0)  # Уведомление В МОМЕНТ события
+NOTIFICATION_ADVANCE = timedelta(minutes=0)  # Уведомление в момент появления острова
 EVENT_DURATION = timedelta(minutes=30)  # Продолжительность события
 
-def send_telegram_message(message: str):
-    """Отправляет сообщение в Telegram"""
+def send_telegram_message(message: str, parse_mode: str = 'HTML'):
+    """Отправляет сообщение в Telegram с улучшенной обработкой ошибок"""
     if not BOT_TOKEN or not CHAT_ID:
         print(f"⚠️ Не настроены переменные окружения для Telegram")
+        print(f"BOT_TOKEN: {'✅ установлен' if BOT_TOKEN else '❌ не установлен'}")
+        print(f"CHAT_ID: {'✅ установлен' if CHAT_ID else '❌ не установлен'}")
         print(f"Сообщение: {message}")
         return False
     
@@ -29,17 +32,29 @@ def send_telegram_message(message: str):
     payload = {
         'chat_id': CHAT_ID,
         'text': message,
-        'parse_mode': 'HTML'
+        'parse_mode': parse_mode
     }
     
     try:
-        response = requests.post(url, json=payload, timeout=10)
+        response = requests.post(url, json=payload, timeout=15)
+        
         if response.status_code == 200:
             print(f"✅ Уведомление отправлено успешно")
             return True
+        elif response.status_code == 400:
+            # Попробуем без форматирования
+            payload['parse_mode'] = None
+            response = requests.post(url, json=payload, timeout=15)
+            if response.status_code == 200:
+                print(f"✅ Уведомление отправлено успешно (без форматирования)")
+                return True
+            else:
+                print(f"❌ Ошибка отправки: {response.status_code} - {response.text}")
+                return False
         else:
             print(f"❌ Ошибка отправки: {response.status_code} - {response.text}")
             return False
+            
     except Exception as e:
         print(f"❌ Исключение при отправке: {e}")
         return False
@@ -58,7 +73,7 @@ def calculate_next_events(from_time: datetime, count: int = 10):
         event_start = current_event
         event_end = event_start + EVENT_DURATION
         # Уведомление в момент начала события
-        notification_time = event_start - NOTIFICATION_ADVANCE  # = event_start (так как NOTIFICATION_ADVANCE = 0)
+        notification_time = event_start - NOTIFICATION_ADVANCE
         
         events.append({
             'notification_time': notification_time,
@@ -72,7 +87,7 @@ def calculate_next_events(from_time: datetime, count: int = 10):
     return events
 
 def get_current_notification_event():
-    """Получает событие, которое начинается сейчас (в пределах ±2 минут)"""
+    """Получает событие, уведомление о котором должно быть отправлено сейчас (в пределах ±2 минут)"""
     now = datetime.now(pytz.UTC)
     tolerance = timedelta(minutes=5)  # Допуск ±5 минут
     
@@ -87,15 +102,28 @@ def get_current_notification_event():
         
         if time_diff <= tolerance.total_seconds():
             print(f"✅ Найдено событие для уведомления: разница {time_diff:.0f} секунд")
+            print(f"📅 Уведомление: {notification_time.strftime('%d.%m.%Y %H:%M')} UTC")
+            print(f"🏝️ Событие: {event['event_start'].strftime('%d.%m.%Y %H:%M')} UTC")
             return event
     
     print(f"❌ Не найдено событий для уведомления (допуск ±{tolerance.total_seconds():.0f} секунд)")
+    
+    # Показываем ближайшие уведомления для отладки
+    next_event = get_next_notification_event()
+    if next_event:
+        nt = next_event['notification_time']
+        et = next_event['event_start']
+        time_until = (nt - now).total_seconds()
+        print(f"📅 Следующее уведомление: {nt.strftime('%d.%m.%Y %H:%M')} UTC")
+        print(f"🏝️ Следующее событие: {et.strftime('%d.%m.%Y %H:%M')} UTC")
+        print(f"⏰ До уведомления: {time_until/3600:.1f} часов")
+    
     return None
 
 def get_next_notification_event():
     """Получает следующее событие для планирования"""
     now = datetime.now(pytz.UTC)
-    events = calculate_next_events(now, count=5)
+    events = calculate_next_events(now, count=10)
     
     for event in events:
         if event['notification_time'] > now:
@@ -104,26 +132,38 @@ def get_next_notification_event():
     return None
 
 def format_notification_message(event):
-    """Форматирует сообщение для уведомления"""
-    # Получаем время следующего события
-    now = datetime.now(pytz.UTC)
-    next_events = calculate_next_events(now, count=2)
+    """Форматирует сообщение для уведомления в момент появления острова"""
+    # Получаем время события
+    event_start = event['event_start']
+    event_end = event['event_end']
     
-    # Ищем следующее событие после текущего
+    # Конвертируем в киевское время (UTC+2/+3)
+    kiev_tz = pytz.timezone('Europe/Kiev')
+    event_start_kiev = event_start.astimezone(kiev_tz)
+    event_end_kiev = event_end.astimezone(kiev_tz)
+    
+    # Получаем следующее событие
+    now = datetime.now(pytz.UTC)
+    next_events = calculate_next_events(now, count=5)
+    
     next_event = None
     for next_ev in next_events:
         if next_ev['event_start'] > event['event_start']:
             next_event = next_ev
             break
     
-    message = "ЕБУЧИЙ ШАР прибыл!"
+    message = f"🏝️ <b>ЕБУЧИЙ ШАР прибыл!</b>\n\n"
+    message += f"⏰ <b>Доступен сейчас:</b>\n"
+    message += f"   🇺🇦 Киев: {event_start_kiev.strftime('%H:%M')} ({event_start_kiev.strftime('%d.%m')})\n"
+    message += f"   🌍 UTC: {event_start.strftime('%H:%M')} ({event_start.strftime('%d.%m')})\n\n"
     
-    # Добавляем время следующего прибытия
+    message += f"⏳ <b>Продолжительность:</b> {EVENT_DURATION.seconds//60} минут\n"
+    message += f"   (до {event_end_kiev.strftime('%H:%M')} по Киеву)\n\n"
+    
+    # Добавляем время следующего события
     if next_event:
-        # Конвертируем в киевское время (UTC+2/+3)
-        kiev_tz = pytz.timezone('Europe/Kiev')
         next_time_kiev = next_event['event_start'].astimezone(kiev_tz).strftime('%H:%M')
-        message += f"\n\nСледующее прибытие в {next_time_kiev}"
+        message += f"\nСледующее прибытие в {next_time_kiev}"
     
     return message
 
@@ -140,19 +180,68 @@ def schedule_next_notification():
     print(f"📅 Планируем следующее уведомление:")
     print(f"   Уведомление: {notification_time.strftime('%d.%m.%Y %H:%M')} UTC")
     print(f"   Событие: {event_start.strftime('%d.%m.%Y %H:%M')} UTC")
+    print(f"   В момент появления острова")
     
     # Импортируем функцию создания задания
     try:
         from setup_cronjob import create_single_notification_job
         return create_single_notification_job(notification_time)
-    except ImportError:
-        print("⚠️ Модуль setup_cronjob недоступен для автопланирования")
+    except ImportError as e:
+        print(f"⚠️ Модуль setup_cronjob недоступен для автопланирования: {e}")
         return False
+
+def show_schedule_info():
+    """Показывает информацию о расписании событий"""
+    now = datetime.now(pytz.UTC)
+    events = calculate_next_events(now, count=5)
+    
+    print(f"📅 РАСПИСАНИЕ FLOATING ISLAND")
+    print("=" * 50)
+    print(f"⏰ Текущее время: {now.strftime('%d.%m.%Y %H:%M')} UTC")
+    print(f"🔄 Интервал: {EVENT_INTERVAL.total_seconds()/3600:.1f} часов")
+    print(f"⏳ Уведомления: в момент события")
+    print(f"🏝️ Продолжительность: {EVENT_DURATION.seconds//60} минут")
+    print()
+    
+    kiev_tz = pytz.timezone('Europe/Kiev')
+    
+    for i, event in enumerate(events, 1):
+        notification_time = event['notification_time']
+        event_start = event['event_start']
+        
+        nt_kiev = notification_time.astimezone(kiev_tz)
+        et_kiev = event_start.astimezone(kiev_tz)
+        
+        time_until_notification = (notification_time - now).total_seconds()
+        time_until_event = (event_start - now).total_seconds()
+        
+        print(f"🏝️ Событие {i}:")
+        print(f"   📢 Уведомление: {nt_kiev.strftime('%d.%m %H:%M')} (Киев)")
+        print(f"   🏝️ Событие: {et_kiev.strftime('%d.%m %H:%M')} (Киев)")
+        
+        if time_until_notification > 0:
+            hours = int(time_until_notification // 3600)
+            print(f"   ⏰ До уведомления: {hours} ч.")
+        elif time_until_event > 0:
+            hours = int(time_until_event // 3600)
+            print(f"   ⏰ До события: {hours} ч.")
+        else:
+            print(f"   ✅ Событие прошло")
+        print()
 
 def main():
     """Основная функция - отправляет уведомление и планирует следующее"""
-    print(f"🤖 Запуск точной проверки Floating Island...")
+    print(f"🤖 Запуск проверки Floating Island Bot...")
     print(f"⏰ Текущее время: {datetime.now(pytz.UTC).strftime('%Y-%m-%d %H:%M:%S')} UTC")
+    
+    # Проверяем аргументы командной строки для тестовых режимов
+    if len(sys.argv) > 1:
+        if sys.argv[1] == '--test' or sys.argv[1] == '--test-send':
+            test_notification()
+            return
+        elif sys.argv[1] == '--schedule':
+            show_schedule_info()
+            return
     
     # Проверяем, есть ли событие для уведомления прямо сейчас
     current_event = get_current_notification_event()
@@ -163,7 +252,7 @@ def main():
         event_start = current_event['event_start']
         
         print(f"   Время уведомления: {notification_time.strftime('%H:%M')} UTC")
-        print(f"   Остров доступен: {event_start.strftime('%H:%M')} UTC")
+        print(f"   Остров появился: {event_start.strftime('%H:%M')} UTC")
         
         message = format_notification_message(current_event)
         
@@ -186,11 +275,13 @@ def main():
         next_event = get_next_notification_event()
         if next_event:
             nt = next_event['notification_time']
+            et = next_event['event_start']
             print(f"📅 Следующее уведомление: {nt.strftime('%d.%m.%Y %H:%M')} UTC")
+            print(f"🏝️ Следующее событие: {et.strftime('%d.%m.%Y %H:%M')} UTC")
 
 def test_notification():
     """Отправляет тестовое уведомление для проверки работы бота"""
-    print("🧑‍🔬 ТЕСТ ОТПРАВКИ УВЕДОМЛЕНИЙ")
+    print("🧑‍🔬 ТЕСТ СИСТЕМЫ УВЕДОМЛЕНИЙ")
     print("=" * 50)
     
     now = datetime.now(pytz.UTC)
@@ -207,9 +298,23 @@ def test_notification():
     
     print(f"🤖 Токен бота: {BOT_TOKEN[:10]}...{BOT_TOKEN[-4:]}")
     print(f"💬 Chat ID: {CHAT_ID}")
+    print()
+    
+    # Показываем информацию о ближайших событиях
+    next_event = get_next_notification_event()
+    if next_event:
+        nt = next_event['notification_time']
+        et = next_event['event_start']
+        kiev_tz = pytz.timezone('Europe/Kiev')
+        et_kiev = et.astimezone(kiev_tz)
+        
+        print(f"📅 Ближайшее событие:")
+        print(f"   Уведомление: {nt.strftime('%d.%m.%Y %H:%M')} UTC")
+        print(f"   Событие: {et_kiev.strftime('%d.%m.%Y %H:%M')} (Киев)")
+        print()
     
     # Создаем тестовое сообщение
-    test_message = f"""🧑‍🔬 <b>ТЕСТ СИСТЕМЫ</b>
+    test_message = f"""🧑‍🔬 <b>ТЕСТ СИСТЕМЫ УВЕДОМЛЕНИЙ</b>
 
 ✅ Бот Floating Island работает!
 
@@ -217,91 +322,21 @@ def test_notification():
 📶 <b>Статус:</b> Подключение к Telegram работает
 🏝️ <b>Готовность:</b> Система готова к отправке уведомлений
 
-⏰ Ближайшее уведомление: <code>29.08.2025 01:00 UTC</code>
+⏰ <b>Параметры системы:</b>
+• Уведомления в момент появления острова
+• Интервал между событиями: {EVENT_INTERVAL.total_seconds()/3600:.1f} часов
+• Продолжительность события: {EVENT_DURATION.seconds//60} минут
 
-🚀 Система автоматических уведомлений запущена!"""
-    
-    print("\n📤 Отправляем тестовое сообщение:")
-    print("-" * 50)
-    print(test_message)
-    print("-" * 50)
-    
-    # Отправляем сообщение
-    success = send_telegram_message(test_message)
-    
-    if success:
-        print("✅ ТЕСТ ПРОШЕЛ УСПЕШНО!")
-        print("📡 Бот может отправлять сообщения в вашу группу")
-        print("🏝️ Система уведомлений Floating Island готова к работе!")
+🔔 Если вы видите это сообщение, значит бот настроен правильно!"""
+
+    # Отправляем тестовое сообщение
+    if send_telegram_message(test_message):
+        print("✅ Тестовое сообщение отправлено успешно!")
+        print("🎉 Система работает корректно!")
         return True
     else:
-        print("❌ ТЕСТ НЕ ПРОШЕЛ!")
-        print("🔧 Проверьте:")
-        print("   - Правильность TELEGRAM_BOT_TOKEN")
-        print("   - Правильность TELEGRAM_CHAT_ID")
-        print("   - Добавлен ли бот в группу")
-        print("   - Есть ли у бота права на отправку сообщений")
+        print("❌ Ошибка отправки тестового сообщения")
         return False
 
-def test_mode():
-    """Тестовый режим - показывает ближайшие события без отправки"""
-    print("🧪 ТЕСТОВЫЙ РЕЖИМ")
-    print("=" * 50)
-    
-    now = datetime.now(pytz.UTC)
-    print(f"⏰ Текущее время: {now.strftime('%Y-%m-%d %H:%M:%S')} UTC")
-    
-    # Показываем ближайшие 5 событий
-    events = calculate_next_events(now, count=5)
-    
-    print(f"\n📅 Ближайшие 5 событий Floating Island:")
-    print("-" * 50)
-    
-    for i, event in enumerate(events, 1):
-        notification_time = event['notification_time']
-        event_start = event['event_start']
-        event_end = event['event_end']
-        
-        print(f"{i}. Остров появляется: {notification_time.strftime('%d.%m %H:%M')} UTC")
-        print(f"   Доступен:         {event_start.strftime('%d.%m %H:%M')} - {event_end.strftime('%H:%M')} UTC")
-        print()
-    
-    # Проверяем текущее событие
-    print("-" * 50)
-    current_event = get_current_notification_event()
-    if current_event:
-        print("🔔 ТЕКУЩЕЕ СОБЫТИЕ ДЛЯ УВЕДОМЛЕНИЯ:")
-        message = format_notification_message(current_event)
-        print(f"Сообщение:\n{message}\n")
-        print("📤 В реальном режиме это сообщение было бы отправлено в Telegram")
-    else:
-        print("📭 Нет событий для уведомления в текущее время")
-        
-        # Показываем следующее событие
-        next_event = get_next_notification_event()
-        if next_event:
-            nt = next_event['notification_time']
-            et = next_event['event_start']
-            time_until = nt - now
-            hours = int(time_until.total_seconds() // 3600)
-            minutes = int((time_until.total_seconds() % 3600) // 60)
-            
-            print(f"📅 Следующее уведомление: {nt.strftime('%d.%m.%Y %H:%M')} UTC")
-            print(f"🏝️ Событие: {et.strftime('%d.%m.%Y %H:%M')} UTC")
-            print(f"⏳ Осталось: {hours} час {minutes} минут")
-
 if __name__ == "__main__":
-    import sys
-    
-    if len(sys.argv) > 1:
-        if sys.argv[1] == '--test':
-            test_mode()
-        elif sys.argv[1] == '--test-send':
-            test_notification()
-        else:
-            print("❌ Неизвестная команда")
-            print("Доступные опции:")
-            print("  --test      - показать расписание без отправки")
-            print("  --test-send - отправить тестовое сообщение")
-    else:
-        main()
+    main()
