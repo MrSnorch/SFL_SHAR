@@ -2,7 +2,7 @@ name: Floating Island Notifications
 
 on:
   repository_dispatch:
-    types: [floating_island_notification, floating_island_check, floating_island_schedule]
+    types: [floating_island_notification, floating_island_check, floating_island_schedule, test_connection]
   workflow_dispatch:
     inputs:
       action:
@@ -16,6 +16,7 @@ on:
         - test
         - test-send
         - cleanup
+        - list
       count:
         description: 'Количество событий для планирования (только для schedule)'
         required: false
@@ -24,22 +25,22 @@ on:
 
 jobs:
   notify:
-    if: github.event.action == 'floating_island_notification' || github.event.inputs.action == 'notify' || github.event.inputs.action == 'test' || github.event.inputs.action == 'test-send'
+    if: github.event.action == 'floating_island_notification' || github.event.action == 'floating_island_check' || github.event.inputs.action == 'notify' || github.event.inputs.action == 'test' || github.event.inputs.action == 'test-send'
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: 3.11
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests pytz
+          pip install -r requirements.txt
 
       - name: Run floating island bot
         env:
@@ -47,17 +48,21 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "=== FLOATING ISLAND NOTIFICATION ==="
-          echo 'Время запуска:' $(date -u)
+          echo "Время запуска: $(date -u)"
+          echo "Событие: ${{ github.event.action }}"
+          echo "Входной параметр: ${{ github.event.inputs.action }}"
+          
           if [ "${{ github.event.inputs.action }}" = "test" ]; then
-            echo 'Тестовый режим:'
+            echo "Тестовый режим (проверка расписания):"
             python floating_island_bot.py --test
           elif [ "${{ github.event.inputs.action }}" = "test-send" ]; then
-            echo 'Тест отправки сообщения:'
+            echo "Тест отправки сообщения:"
             python floating_island_bot.py --test-send
           else
-            echo 'Режим уведомлений:'
+            echo "Режим уведомлений:"
             python floating_island_bot.py
           fi
           echo "=== END NOTIFICATION ==="
@@ -68,17 +73,17 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: 3.11
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests pytz
+          pip install -r requirements.txt
 
       - name: Schedule floating island notifications
         env:
@@ -86,11 +91,12 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "=== SCHEDULING FLOATING ISLAND ==="
-          echo 'Время запуска:' $(date -u)
-          COUNT="${{ github.event.inputs.count || '30' }}"
-          echo 'Планируем' "$COUNT" 'событий'
+          echo "Время запуска: $(date -u)"
+          COUNT="${{ github.event.inputs.count || github.event.client_payload.count || '30' }}"
+          echo "Планируем $COUNT событий"
           python scheduler.py schedule $COUNT
           echo "=== END SCHEDULING ==="
 
@@ -100,24 +106,83 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: 3.11
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests pytz
+          pip install -r requirements.txt
 
       - name: Cleanup old jobs
         env:
           CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "=== CLEANUP OLD JOBS ==="
-          echo 'Время запуска:' $(date -u)
+          echo "Время запуска: $(date -u)"
           python scheduler.py cleanup
           echo "=== END CLEANUP ==="
+
+  list:
+    if: github.event.inputs.action == 'list'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: List scheduled jobs
+        env:
+          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "=== LIST SCHEDULED JOBS ==="
+          echo "Время запуска: $(date -u)"
+          python scheduler.py list
+          echo "=== END LIST ==="
+
+  setup:
+    if: github.event.inputs.action == 'setup'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Setup cron job
+        env:
+          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "=== SETUP CRON JOB ==="
+          echo "Время запуска: $(date -u)"
+          python setup_cronjob.py create
+          echo "=== END SETUP ==="
