@@ -132,7 +132,7 @@ jobs:
           echo "Время запуска: $(date -u)"
           COUNT="${{ github.event.inputs.count || '30' }}"
           echo "Планируем $COUNT событий через FastCron"
-          python fastcron_scheduler.py schedule $COUNT
+          python fastcron_scheduler_fixed.py schedule $COUNT
           echo "=== END FASTCRON SCHEDULING ==="
 
   fastcron-test:
@@ -161,7 +161,7 @@ jobs:
         run: |
           echo "=== FASTCRON CONNECTION TEST ==="
           echo "Время запуска: $(date -u)"
-          python setup_fastcron.py test
+          python setup_fastcron_fixed.py test
           echo "=== END FASTCRON TEST ==="
 
   schedule:
