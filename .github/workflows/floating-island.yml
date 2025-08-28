@@ -86,7 +86,7 @@ jobs:
           echo "=== SCHEDULING FLOATING ISLAND ==="
           echo 'Время запуска:' $(date -u)
           COUNT="${{ github.event.inputs.count || '30' }}"
-          echo 'Планируем' $COUNT 'событий'
+          echo 'Планируем' "$COUNT" 'событий'
           python scheduler.py schedule $COUNT
           echo "=== END SCHEDULING ===""
 
