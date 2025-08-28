@@ -48,15 +48,15 @@ jobs:
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
         run: |
           echo "=== FLOATING ISLAND NOTIFICATION ==="
-          echo "Время запуска: $(date -u)"
+          echo 'Время запуска:' $(date -u)
           if [ "${{ github.event.inputs.action }}" = "test" ]; then
-            echo "Тестовый режим:"
+            echo 'Тестовый режим:'
             python floating_island_bot.py --test
           else
-            echo "Режим уведомлений:"
+            echo 'Режим уведомлений:'
             python floating_island_bot.py
           fi
-          echo "=== END NOTIFICATION ==="
+          echo "=== END NOTIFICATION ===""
 
   schedule:
     if: github.event.action == 'floating_island_schedule' || github.event.inputs.action == 'schedule'
@@ -84,11 +84,11 @@ jobs:
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
         run: |
           echo "=== SCHEDULING FLOATING ISLAND ==="
-          echo "Время запуска: $(date -u)"
+          echo 'Время запуска:' $(date -u)
           COUNT="${{ github.event.inputs.count || '30' }}"
-          echo "Планируем $COUNT событий"
+          echo 'Планируем' $COUNT 'событий'
           python scheduler.py schedule $COUNT
-          echo "=== END SCHEDULING ==="
+          echo "=== END SCHEDULING ===""
 
   cleanup:
     if: github.event.inputs.action == 'cleanup'
@@ -114,6 +114,6 @@ jobs:
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
         run: |
           echo "=== CLEANUP OLD JOBS ==="
-          echo "Время запуска: $(date -u)"
+          echo 'Время запуска:' $(date -u)
           python scheduler.py cleanup
-          echo "=== END CLEANUP ===""
+          echo "=== END CLEANUP ==="""
