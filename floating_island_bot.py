@@ -168,7 +168,7 @@ def format_notification_message(event):
     return message
 
 def schedule_next_notification():
-    """Планирует следующее уведомление в cron-job.org"""
+    """Планирует следующее уведомление (сначала FastCron, потом cron-job.org)"""
     next_event = get_next_notification_event()
     if not next_event:
         print("❌ Не найдено следующее событие для планирования")
@@ -182,12 +182,29 @@ def schedule_next_notification():
     print(f"   Событие: {event_start.strftime('%d.%m.%Y %H:%M')} UTC")
     print(f"   В момент появления острова")
     
-    # Импортируем функцию создания задания
+    # Сначала пробуем FastCron (лучше с rate limiting)
     try:
-        from setup_cronjob import create_single_notification_job
-        return create_single_notification_job(notification_time)
+        from setup_fastcron import create_single_notification_job as create_fastcron_job
+        fastcron_api_key = os.environ.get('FASTCRON_API_KEY')
+        if fastcron_api_key:
+            print(f"🚀 Пробуем FastCron API...")
+            result = create_fastcron_job(notification_time)
+            if result:
+                print(f"✅ FastCron: следующее уведомление запланировано")
+                return result
+            else:
+                print(f"⚠️ FastCron не сработал, пробуем cron-job.org...")
+        else:
+            print(f"📝 FASTCRON_API_KEY не настроен, пробуем cron-job.org...")
+    except ImportError:
+        print(f"📝 Модуль setup_fastcron недоступен, пробуем cron-job.org...")
+    
+    # Откат на cron-job.org
+    try:
+        from setup_cronjob import create_single_notification_job as create_cronjob_job
+        return create_cronjob_job(notification_time)
     except ImportError as e:
-        print(f"⚠️ Модуль setup_cronjob недоступен для автопланирования: {e}")
+        print(f"⚠️ Модули планирования недоступны: {e}")
         return False
 
 def show_schedule_info():
