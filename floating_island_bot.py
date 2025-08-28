@@ -89,7 +89,7 @@ def get_current_notification_event():
             print(f"✅ Найдено событие для уведомления: разница {time_diff:.0f} секунд")
             return event
     
-    print(f"❌ Не найдено событий для уведомления (допуск ±{tolerance.total_seconds():.0f} секунд)"))
+    print(f"❌ Не найдено событий для уведомления (допуск ±{tolerance.total_seconds():.0f} секунд)")
     return None
 
 def get_next_notification_event():
