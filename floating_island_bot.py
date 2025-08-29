@@ -192,10 +192,18 @@ def format_notification_message(event):
             next_event = next_ev
             break
     
-    # Новый упрощенный формат уведомлений
-    message = f"🎈 ЕБУЧИЙ ШАР прибыл!\n\n"
-    message += f"Киев: {event_start_kiev.strftime('%H:%M')}\n"
-    message += f"UTC: {event_start.strftime('%H:%M')}"
+    # Новый формат уведомления
+    message = f"ЕБУЧИЙ ШАР прибыл!\n"
+    
+    # Добавляем время следующего события если есть
+    if next_event:
+        next_kiev = next_event['event_start'].astimezone(kiev_tz)
+        message += f"Следующие прибытие: {next_kiev.strftime('%H:%M')}"
+    else:
+        # Если не удалось определить следующее событие, показываем стандартное время
+        next_time = event_start + EVENT_INTERVAL
+        next_kiev = next_time.astimezone(kiev_tz)
+        message += f"Следующие прибытие: {next_kiev.strftime('%H:%M')}"
     
     return message
 
