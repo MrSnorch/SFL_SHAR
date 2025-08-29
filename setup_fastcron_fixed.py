@@ -49,14 +49,14 @@ def validate_environment():
                 errors.append("❌ Неправильный формат WEBHOOK_URL. Должно быть: https://api.github.com/repos/{owner}/{repo}/dispatches")
     
     if not GITHUB_TOKEN:
-        errors.append("❌ Не установлена переменная GITHUB_TOKEN")
+        errors.append("❌ Не установлена переменная GH_TOKEN")
     
     if errors:
         print("\n".join(errors))
         print("\n💡 Инструкции по настройке:")
         print("1. FASTCRON_API_KEY - API ключ с сайта fastcron.com")
         print("2. WEBHOOK_URL - https://api.github.com/repos/{username}/{repo}/dispatches")
-        print("3. GITHUB_TOKEN - Personal Access Token с правами 'repo' и 'workflow'")
+        print("3. GH_TOKEN - Personal Access Token с правами 'repo' и 'workflow'")
         return False
     
     return True
