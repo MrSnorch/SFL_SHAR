@@ -15,7 +15,7 @@ FASTCRON_BASE_URL = 'https://www.fastcron.com/api'
 
 # URL для вызова бота
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
-GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
+GITHUB_TOKEN = os.environ.get('GH_TOKEN')
 
 # Настройки Telegram для прямого тестирования
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
