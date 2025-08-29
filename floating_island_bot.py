@@ -19,6 +19,46 @@ EVENT_INTERVAL = timedelta(hours=8, minutes=20)  # Интервал между �
 NOTIFICATION_ADVANCE = timedelta(minutes=0)  # Уведомление в момент появления острова
 EVENT_DURATION = timedelta(minutes=30)  # Продолжительность события
 
+# Настройки для webhook
+WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
+GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
+
+def validate_webhook_url(url):
+    """Проверяет правильность формата webhook URL"""
+    if not url:
+        return False, "URL не задан"
+    
+    if not url.startswith('https://api.github.com/repos/'):
+        return False, "URL должен начинаться с https://api.github.com/repos/"
+    
+    if not url.endswith('/dispatches'):
+        return False, "URL должен заканчиваться на /dispatches"
+    
+    # Проверяем структуру URL
+    parts = url.replace('https://api.github.com/repos/', '').replace('/dispatches', '').split('/')
+    if len(parts) != 2 or not all(parts):
+        return False, "Неправильный формат. Должно быть: https://api.github.com/repos/{owner}/{repo}/dispatches"
+    
+    return True, f"Правильный формат: владелец={parts[0]}, репозиторий={parts[1]}"
+
+def get_github_dispatch_url(webhook_url):
+    """Получает правильный URL для GitHub Actions dispatches"""
+    if not webhook_url:
+        return None
+    
+    try:
+        if webhook_url.startswith('https://api.github.com/repos/'):
+            url_parts = webhook_url.replace('https://api.github.com/repos/', '').split('/')
+            if len(url_parts) >= 2:
+                owner, repo = url_parts[0], url_parts[1]
+                # Правильный формат URL для dispatches с конкретным workflow ID
+                return f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/184853159/dispatches"
+    except Exception as e:
+        print(f"❌ Ошибка формирования GitHub dispatch URL: {e}")
+        return None
+    
+    return None
+
 def send_telegram_message(message: str, parse_mode: str = 'HTML'):
     """Отправляет сообщение в Telegram с улучшенной обработкой ошибок"""
     if not BOT_TOKEN or not CHAT_ID:
