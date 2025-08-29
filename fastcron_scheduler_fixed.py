@@ -15,7 +15,7 @@ FASTCRON_BASE_URL = 'https://app.fastcron.com/api'
 
 # URL для вызова вашего бота
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
-GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
+GITHUB_TOKEN = os.environ.get('GH_TOKEN')
 
 def validate_environment():
     """Проверяет настройки переменных окружения"""
@@ -249,7 +249,7 @@ def schedule_floating_island_sequence(start_date: datetime = None, count: int = 
         
         print(f"\n📌 Планируем событие {i}/{len(events)}:")
         print(f"   📢 Уведомление: {notification_time.strftime('%d.%m.%Y %H:%M')} UTC")
-        print(f"   🏝️ Событие: {event_start.strftime('%d.%m.%Y %H:%M')} UTC")
+        print(f"   🎈 Событие: {event_start.strftime('%d.%m.%Y %H:%M')} UTC")
         
         # Вычисляем время до уведомления
         time_until = (notification_time - start_date).total_seconds()
