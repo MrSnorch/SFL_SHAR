@@ -21,9 +21,28 @@ GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
 
+def validate_webhook_url(url):
+    """Проверяет правильность формата webhook URL"""
+    if not url:
+        return False, "URL не задан"
+    
+    if not url.startswith('https://api.github.com/repos/'):
+        return False, "URL должен начинаться с https://api.github.com/repos/"
+    
+    if not url.endswith('/dispatches'):
+        return False, "URL должен заканчиваться на /dispatches"
+    
+    # Проверяем структуру URL
+    parts = url.replace('https://api.github.com/repos/', '').replace('/dispatches', '').split('/')
+    if len(parts) != 2 or not all(parts):
+        return False, "Неправильный формат. Должно быть: https://api.github.com/repos/{owner}/{repo}/dispatches"
+    
+    return True, f"Правильный формат: владелец={parts[0]}, репозиторий={parts[1]}"
+
 def validate_environment():
     """Проверяет настройки переменных окружения"""
     missing = []
+    errors = []
     
     if not FASTCRON_API_KEY:
         missing.append("FASTCRON_API_KEY")
@@ -37,10 +56,28 @@ def validate_environment():
         missing.append("TELEGRAM_CHAT_ID")
     
     if missing:
-        print(f"❌ Отсутствуют переменные: {', '.join(missing)}")
+        errors.append(f"❌ Отсутствуют переменные: {', '.join(missing)}")
+    
+    # Проверяем формат WEBHOOK_URL
+    if WEBHOOK_URL:
+        is_valid, message = validate_webhook_url(WEBHOOK_URL)
+        if not is_valid:
+            errors.append(f"❌ Ошибка WEBHOOK_URL: {message}")
+    
+    if errors:
+        print("\n".join(errors))
+        print("\n💡 Инструкции по настройке:")
+        print("1. FASTCRON_API_KEY - API ключ с сайта fastcron.com")
+        print("2. WEBHOOK_URL - https://api.github.com/repos/{username}/{repo}/dispatches")
+        print("3. GITHUB_TOKEN - Personal Access Token с правами 'repo' и 'workflow'")
+        print("4. TELEGRAM_BOT_TOKEN - Токен Telegram бота")
+        print("5. TELEGRAM_CHAT_ID - ID чата для уведомлений")
         return False
     
     print("✅ Все переменные окружения настроены")
+    if WEBHOOK_URL:
+        is_valid, message = validate_webhook_url(WEBHOOK_URL)
+        print(f"🔗 WEBHOOK_URL: {message}")
     return True
 
 def send_test_telegram_message():
@@ -112,14 +149,15 @@ def create_test_fastcron_job():
     
     title = f"TEST Floating Island {test_time.strftime('%d.%m %H:%M')} UTC"
     
-    # Подготавливаем данные для GitHub webhook
+    # Подготавливаем данные для GitHub webhook (новый формат)
     post_data = json.dumps({
-        'event_type': 'floating_island_notification',
-        'client_payload': {
-            'notification_time': test_time.isoformat(),
-            'precision': 'test',
-            'test_mode': True
-        }
+        "event_type": "floating_island_notification",
+        "client_payload": {
+            "notification_time": test_time.isoformat(),
+            "precision": "test",
+            "test_mode": True
+        },
+        "ref": "main"
     })
     
     # HTTP заголовки для GitHub API
@@ -171,24 +209,44 @@ def create_test_github_webhook():
         print("❌ Нет данных для GitHub webhook")
         return False
     
+    # Извлекаем owner и repo из WEBHOOK_URL для формирования правильного URL
+    try:
+        if WEBHOOK_URL.startswith('https://api.github.com/repos/'):
+            url_parts = WEBHOOK_URL.replace('https://api.github.com/repos/', '').split('/')
+            if len(url_parts) >= 2:
+                owner, repo = url_parts[0], url_parts[1]
+                # Новый формат URL для dispatches
+                github_dispatch_url = f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/184853159/dispatches"
+            else:
+                print("❌ Неправильный формат WEBHOOK_URL")
+                return False
+        else:
+            print("❌ WEBHOOK_URL должен начинаться с https://api.github.com/repos/")
+            return False
+    except Exception as e:
+        print(f"❌ Ошибка разбора WEBHOOK_URL: {e}")
+        return False
+    
     headers = {
         'Authorization': f'token {GITHUB_TOKEN}',
         'Accept': 'application/vnd.github.v3+json',
         'Content-Type': 'application/json'
     }
     
+    # Новый формат payload с обязательным "ref": "main"
     test_payload = {
         'event_type': 'floating_island_notification',
         'client_payload': {
             'notification_time': datetime.now(pytz.UTC).isoformat(),
             'precision': 'test_immediate',
             'test_mode': True
-        }
+        },
+        'ref': 'main'  # Обязательное поле
     }
     
     try:
         print("🚀 Отправляем тестовый webhook в GitHub...")
-        response = requests.post(WEBHOOK_URL, headers=headers, json=test_payload, timeout=10)
+        response = requests.post(github_dispatch_url, headers=headers, json=test_payload, timeout=10)
         
         if response.status_code == 204:
             print("✅ Тестовый webhook отправлен в GitHub!")
