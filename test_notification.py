@@ -126,6 +126,64 @@ def send_test_telegram_message():
         print(f"❌ Исключение при отправке в Telegram: {e}")
         return False
 
+def create_test_github_webhook():
+    """Создает тестовый webhook напрямую в GitHub для немедленного выполнения"""
+    if not WEBHOOK_URL or not GITHUB_TOKEN:
+        print("❌ Нет данных для GitHub webhook")
+        return False
+    
+    # Извлекаем owner и repo из WEBHOOK_URL для формирования правильного URL
+    try:
+        if WEBHOOK_URL.startswith('https://api.github.com/repos/'):
+            url_parts = WEBHOOK_URL.replace('https://api.github.com/repos/', '').split('/')
+            if len(url_parts) >= 2:
+                owner, repo = url_parts[0], url_parts[1]
+                # Новый формат URL для dispatches
+                github_dispatch_url = f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/184853159/dispatches"
+            else:
+                print("❌ Неправильный формат WEBHOOK_URL")
+                return False
+        else:
+            print("❌ WEBHOOK_URL должен начинаться с https://api.github.com/repos/")
+            return False
+    except Exception as e:
+        print(f"❌ Ошибка разбора WEBHOOK_URL: {e}")
+        return False
+    
+    headers = {
+        'Authorization': f'token {GITHUB_TOKEN}',
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+    }
+    
+    # Правильный формат payload для workflow dispatches
+    test_payload = {
+        'ref': 'main',  # Обязательное поле
+        'inputs': {
+            'action': 'test-send',
+            'notification_time': datetime.now(pytz.UTC).isoformat(),
+            'precision': 'test_immediate',
+            'test_mode': 'true'
+        }
+    }
+    
+    try:
+        print("🚀 Отправляем тестовый webhook в GitHub...")
+        response = requests.post(github_dispatch_url, headers=headers, json=test_payload, timeout=10)
+        
+        if response.status_code == 204:
+            print("✅ Тестовый webhook отправлен в GitHub!")
+            print("📋 GitHub Actions должен запуститься через несколько секунд")
+            return True
+        else:
+            print(f"❌ Ошибка GitHub webhook: {response.status_code}")
+            print(f"Ответ: {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Исключение при отправке webhook: {e}")
+        return False
+
 def create_test_fastcron_job():
     """Создает тестовое задание в FastCron на выполнение через 30 секунд"""
     if not validate_environment():
@@ -147,15 +205,15 @@ def create_test_fastcron_job():
     
     title = f"TEST Floating Island {test_time.strftime('%d.%m %H:%M')} UTC"
     
-    # Подготавливаем данные для GitHub webhook (новый формат)
+    # Правильный формат данных для GitHub workflow dispatch
     post_data = json.dumps({
-        "event_type": "floating_island_notification",
-        "client_payload": {
-            "notification_time": test_time.isoformat(),
-            "precision": "test",
-            "test_mode": True
-        },
-        "ref": "main"
+        'ref': 'main',
+        'inputs': {
+            'action': 'notify',
+            'notification_time': test_time.isoformat(),
+            'precision': 'test',
+            'test_mode': 'true'
+        }
     })
     
     # HTTP заголовки для GitHub API
@@ -199,64 +257,6 @@ def create_test_fastcron_job():
             
     except Exception as e:
         print(f"❌ Исключение при создании тестового задания: {e}")
-        return False
-
-def create_test_github_webhook():
-    """Создает тестовый webhook напрямую в GitHub для немедленного выполнения"""
-    if not WEBHOOK_URL or not GITHUB_TOKEN:
-        print("❌ Нет данных для GitHub webhook")
-        return False
-    
-    # Извлекаем owner и repo из WEBHOOK_URL для формирования правильного URL
-    try:
-        if WEBHOOK_URL.startswith('https://api.github.com/repos/'):
-            url_parts = WEBHOOK_URL.replace('https://api.github.com/repos/', '').split('/')
-            if len(url_parts) >= 2:
-                owner, repo = url_parts[0], url_parts[1]
-                # Новый формат URL для dispatches
-                github_dispatch_url = f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/184853159/dispatches"
-            else:
-                print("❌ Неправильный формат WEBHOOK_URL")
-                return False
-        else:
-            print("❌ WEBHOOK_URL должен начинаться с https://api.github.com/repos/")
-            return False
-    except Exception as e:
-        print(f"❌ Ошибка разбора WEBHOOK_URL: {e}")
-        return False
-    
-    headers = {
-        'Authorization': f'token {GITHUB_TOKEN}',
-        'Accept': 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json'
-    }
-    
-    # Новый формат payload с обязательным "ref": "main"
-    test_payload = {
-        'event_type': 'floating_island_notification',
-        'client_payload': {
-            'notification_time': datetime.now(pytz.UTC).isoformat(),
-            'precision': 'test_immediate',
-            'test_mode': True
-        },
-        'ref': 'main'  # Обязательное поле
-    }
-    
-    try:
-        print("🚀 Отправляем тестовый webhook в GitHub...")
-        response = requests.post(github_dispatch_url, headers=headers, json=test_payload, timeout=10)
-        
-        if response.status_code == 204:
-            print("✅ Тестовый webhook отправлен в GitHub!")
-            print("📋 GitHub Actions должен запуститься через несколько секунд")
-            return True
-        else:
-            print(f"❌ Ошибка GitHub webhook: {response.status_code}")
-            print(f"Ответ: {response.text}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ Исключение при отправке webhook: {e}")
         return False
 
 def main():

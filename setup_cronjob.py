@@ -159,10 +159,11 @@ def create_single_notification_job(notification_time: datetime, retry_count: int
                 }
             ],
             'requestBody': json.dumps({
-                'event_type': 'floating_island_notification',
-                'client_payload': {
+                'ref': 'main',
+                'inputs': {
+                    'action': 'notify',
                     'notification_time': notification_time.isoformat(),
-                    'auto_scheduled': True
+                    'auto_scheduled': 'true'
                 }
             })
         }
@@ -259,8 +260,9 @@ def create_cronjob_schedule():
                 }
             ],
             'requestBody': json.dumps({
-                'event_type': 'floating_island_check',
-                'client_payload': {
+                'ref': 'main',
+                'inputs': {
+                    'action': 'notify',
                     'type': 'periodic_check'
                 }
             })

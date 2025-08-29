@@ -84,8 +84,9 @@ def create_precise_notification_job(notification_time: datetime, title: str = No
                 }
             ],
             'requestBody': json.dumps({
-                'event_type': 'floating_island_notification',
-                'client_payload': {
+                'ref': 'main',
+                'inputs': {
+                    'action': 'notify',
                     'notification_time': notification_time.isoformat(),
                     'precision': 'exact'
                 }

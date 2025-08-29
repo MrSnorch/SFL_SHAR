@@ -10,65 +10,36 @@ import pytz
 
 # API настройки для FastCron.com
 FASTCRON_API_KEY = os.environ.get('FASTCRON_API_KEY')
-FASTCRON_BASE_URL = 'https://app.fastcron.com/api'
+FASTCRON_BASE_URL = 'https://www.fastcron.com/api'
 
 # URL для вызова вашего бота (через GitHub Actions)
-# Формат: https://api.github.com/repos/{owner}/{repo}/dispatches
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
-GITHUB_TOKEN = os.environ.get('GH_TOKEN')
-
+GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
 
 def validate_environment():
-    """Проверяет настройки переменных окружения"""
+    """Проверяет настройки переменных окружения для FastCron"""
     errors = []
-    
-    # Отладочный вывод для проверки доступных переменных
-    print("🔍 Доступные переменные окружения (начинающиеся с G):")
-    for key, value in os.environ.items():
-        if key.startswith('G'):
-            masked_value = value[:4] + '...' + value[-4:] if len(value) > 8 else '***'
-            print(f"  {key}: {masked_value}")
     
     if not FASTCRON_API_KEY:
         errors.append("❌ Не установлена переменная FASTCRON_API_KEY")
     
     if not WEBHOOK_URL:
         errors.append("❌ Не установлена переменная WEBHOOK_URL")
-    else:
-        # Проверяем формат URL для GitHub Actions
-        if not WEBHOOK_URL.startswith('https://api.github.com/repos/'):
-            errors.append("❌ WEBHOOK_URL должен быть GitHub API URL: https://api.github.com/repos/{owner}/{repo}/dispatches")
-        elif '/actions/workflows/' in WEBHOOK_URL:
-            # Правильный формат для workflow dispatches
-            if not WEBHOOK_URL.endswith('/dispatches'):
-                errors.append("❌ WEBHOOK_URL для workflow должен заканчиваться на /dispatches")
-            else:
-                # Проверяем структуру workflow URL
-                url_parts = WEBHOOK_URL.replace('https://api.github.com/repos/', '').split('/')
-                if len(url_parts) < 4 or url_parts[-1] != 'dispatches':
-                    errors.append("❌ Неправильный формат workflow WEBHOOK_URL")
-        elif not WEBHOOK_URL.endswith('/dispatches'):
-            errors.append("❌ WEBHOOK_URL должен заканчиваться на /dispatches")
-        else:
-            # Проверяем структуру базового URL
-            url_parts = WEBHOOK_URL.replace('https://api.github.com/repos/', '').replace('/dispatches', '').split('/')
-            if len(url_parts) != 2 or not all(url_parts):
-                errors.append("❌ Неправильный формат WEBHOOK_URL. Должно быть: https://api.github.com/repos/{owner}/{repo}/dispatches")
+    elif not WEBHOOK_URL.startswith('https://api.github.com/repos/'):
+        errors.append("❌ WEBHOOK_URL должен быть GitHub API URL: https://api.github.com/repos/{owner}/{repo}/dispatches")
     
     if not GITHUB_TOKEN:
-        errors.append("❌ Не установлена переменная GH_TOKEN")
+        errors.append("❌ Не установлена переменная GITHUB_TOKEN")
     
     if errors:
         print("\n".join(errors))
         print("\n💡 Инструкции по настройке:")
         print("1. FASTCRON_API_KEY - API ключ с сайта fastcron.com")
         print("2. WEBHOOK_URL - https://api.github.com/repos/{username}/{repo}/dispatches")
-        print("3. GH_TOKEN - Personal Access Token с правами 'repo' и 'workflow'")
+        print("3. GITHUB_TOKEN - Personal Access Token с правами 'repo' и 'workflow'")
         return False
     
-    print("✅ Все переменные окружения настроены корректно")
     return True
-
 
 def test_fastcron_connection():
     """Тестирует подключение к FastCron API"""
@@ -76,7 +47,7 @@ def test_fastcron_connection():
         return False
     
     try:
-        # Используем правильный эндпоинт FastCron
+        # FastCron использует GET параметры для API функций
         response = requests.get(
             f"{FASTCRON_BASE_URL}/v1/cron_list",
             params={'token': FASTCRON_API_KEY},
@@ -85,9 +56,9 @@ def test_fastcron_connection():
         
         if response.status_code == 200:
             data = response.json()
-            if data.get('status') == 'success':
+            if data.get('status') == 'OK':
                 print("✅ Подключение к FastCron API успешно")
-                crons = data.get('data', [])
+                crons = data.get('crons', [])
                 print(f"📊 Найдено {len(crons)} активных заданий")
                 return True
             else:
@@ -98,7 +69,6 @@ def test_fastcron_connection():
             return False
         else:
             print(f"⚠️ Проблема с подключением к FastCron: {response.status_code}")
-            print(f"Ответ: {response.text}")
             return False
             
     except Exception as e:
@@ -110,42 +80,22 @@ def test_github_connection():
     if not WEBHOOK_URL or not GITHUB_TOKEN:
         return False
     
-    # Извлекаем owner и repo из WEBHOOK_URL для формирования правильного URL
-    try:
-        if WEBHOOK_URL.startswith('https://api.github.com/repos/'):
-            url_parts = WEBHOOK_URL.replace('https://api.github.com/repos/', '').split('/')
-            if len(url_parts) >= 2:
-                owner, repo = url_parts[0], url_parts[1]
-                # Новый формат URL для dispatches
-                github_url = f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/184853159/dispatches"
-            else:
-                print("❌ Неправильный формат WEBHOOK_URL")
-                return False
-        else:
-            print("❌ WEBHOOK_URL должен начинаться с https://api.github.com/repos/")
-            return False
-    except Exception as e:
-        print(f"❌ Ошибка разбора WEBHOOK_URL: {e}")
-        return False
-    
     headers = {
         'Authorization': f'token {GITHUB_TOKEN}',
         'Accept': 'application/vnd.github.v3+json',
         'Content-Type': 'application/json'
     }
     
-    # Правильный формат payload для workflow dispatches
     test_payload = {
-        'ref': 'main',  # Обязательное поле
-        'inputs': {     # Используем "inputs" вместо "client_payload"
-            'action': 'test',
-            'test': 'true',
+        'event_type': 'test_fastcron_connection',
+        'client_payload': {
+            'test': True,
             'timestamp': datetime.now(pytz.UTC).isoformat()
         }
     }
     
     try:
-        response = requests.post(github_url, headers=headers, json=test_payload, timeout=10)
+        response = requests.post(WEBHOOK_URL, headers=headers, json=test_payload, timeout=10)
         
         if response.status_code == 204:
             print("✅ Подключение к GitHub API успешно")
@@ -154,10 +104,7 @@ def test_github_connection():
             print("❌ Неверный GitHub токен")
             return False
         elif response.status_code == 404:
-            print("❌ Workflow не найден или нет прав доступа")
-            return False
-        elif response.status_code == 403:
-            print("❌ Нет прав доступа (проверьте scope токена)")
+            print("❌ Неверный URL репозитория или нет прав доступа")
             return False
         else:
             print(f"⚠️ Проблема с подключением к GitHub: {response.status_code}")
@@ -175,24 +122,6 @@ def create_single_notification_job(notification_time: datetime, retry_count: int
     if not validate_environment():
         return False
     
-    # Извлекаем owner и repo из WEBHOOK_URL для формирования правильного URL
-    try:
-        if WEBHOOK_URL.startswith('https://api.github.com/repos/'):
-            url_parts = WEBHOOK_URL.replace('https://api.github.com/repos/', '').split('/')
-            if len(url_parts) >= 2:
-                owner, repo = url_parts[0], url_parts[1]
-                # Новый формат URL для dispatches
-                github_dispatch_url = f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/184853159/dispatches"
-            else:
-                print("❌ Неправильный формат WEBHOOK_URL")
-                return False
-        else:
-            print("❌ WEBHOOK_URL должен начинаться с https://api.github.com/repos/")
-            return False
-    except Exception as e:
-        print(f"❌ Ошибка разбора WEBHOOK_URL: {e}")
-        return False
-    
     # FastCron использует стандартный cron формат
     minute = notification_time.minute
     hour = notification_time.hour
@@ -204,52 +133,46 @@ def create_single_notification_job(notification_time: datetime, retry_count: int
     
     title = f"Floating Island {notification_time.strftime('%d.%m %H:%M')} UTC"
     
-    # Правильный формат POST данных для GitHub workflow dispatch
-    post_data = json.dumps({
-        'ref': 'main',
-        'inputs': {
-            'action': 'notify',
-            'notification_time': notification_time.isoformat(),
-            'auto_scheduled': 'true'
-        }
-    })
-    
-    # HTTP заголовки для GitHub API
-    http_headers = f"Authorization: token {GITHUB_TOKEN}\\r\\nAccept: application/vnd.github.v3+json\\r\\nContent-Type: application/json"
-    
-    # Параметры для FastCron API
-    params = {
+    # Данные для создания задания в FastCron
+    job_data = {
         'token': FASTCRON_API_KEY,
         'name': title,
-        'expression': cron_expression,
-        'url': github_dispatch_url,  # Используем правильный URL
-        'httpMethod': 'POST',
-        'postData': post_data,
-        'httpHeaders': http_headers,
-        'timezone': 'UTC',
-        'notify': 'false'  # Отключаем уведомления о сбоях
+        'cron': cron_expression,
+        'url': WEBHOOK_URL,
+        'method': 'POST',
+        'headers': json.dumps([
+            f"Authorization: token {GITHUB_TOKEN}",
+            "Accept: application/vnd.github.v3+json",
+            "Content-Type: application/json"
+        ]),
+        'data': json.dumps({
+            'event_type': 'floating_island_notification',
+            'client_payload': {
+                'notification_time': notification_time.isoformat(),
+                'auto_scheduled': True
+            }
+        }),
+        'timezone': 'UTC'
     }
     
     for attempt in range(retry_count):
         try:
-            response = requests.get(
-                f"{FASTCRON_BASE_URL}/v1/cron_add",
-                params=params,
+            response = requests.post(
+                f"{FASTCRON_BASE_URL}/crontab",
+                data=job_data,
                 timeout=30
             )
             
             if response.status_code == 200:
                 result = response.json()
-                if result.get('status') == 'success':
-                    job_data = result.get('data', {})
-                    job_id = job_data.get('id')
+                if result.get('status') == 'OK':
+                    job_id = result.get('id')
                     print(f"✅ FastCron задание создано (ID: {job_id})")
                     print(f"🕐 Время: {notification_time.strftime('%d.%m.%Y %H:%M')} UTC")
                     print(f"⚙️ Cron: {cron_expression}")
                     return job_id
                 else:
-                    error_msg = result.get('message', 'Неизвестная ошибка')
-                    print(f"❌ Ошибка FastCron: {error_msg}")
+                    print(f"❌ Ошибка FastCron: {result.get('message', 'Неизвестная ошибка')}")
                     return False
             elif response.status_code == 429:
                 # Rate limiting - FastCron имеет более мягкие ограничения
@@ -286,50 +209,45 @@ def create_fastcron_schedule():
     if not test_github_connection():
         return False
     
-    # Правильный формат POST данных для GitHub workflow dispatch
-    post_data = json.dumps({
-        'ref': 'main',
-        'inputs': {
-            'action': 'notify'
-        }
-    })
-    
-    # HTTP заголовки для GitHub API
-    http_headers = f"Authorization: token {GITHUB_TOKEN}\\r\\nAccept: application/vnd.github.v3+json\\r\\nContent-Type: application/json"
-    
     # Создаем задание, которое запускается каждые 20 минут
-    params = {
+    job_data = {
         'token': FASTCRON_API_KEY,
         'name': 'Floating Island Notifications Checker',
-        'expression': '0,20,40 * * * *',  # каждые 20 минут
+        'cron': '0,20,40 * * * *',  # каждые 20 минут
         'url': WEBHOOK_URL,
-        'httpMethod': 'POST',
-        'postData': post_data,
-        'httpHeaders': http_headers,
-        'timezone': 'UTC',
-        'notify': 'false'
+        'method': 'POST',
+        'headers': json.dumps([
+            f"Authorization: token {GITHUB_TOKEN}",
+            "Accept: application/vnd.github.v3+json",
+            "Content-Type: application/json"
+        ]),
+        'data': json.dumps({
+            'event_type': 'floating_island_check',
+            'client_payload': {
+                'type': 'periodic_check'
+            }
+        }),
+        'timezone': 'UTC'
     }
     
     try:
-        response = requests.get(
-            f"{FASTCRON_BASE_URL}/v1/cron_add",
-            params=params,
+        response = requests.post(
+            f"{FASTCRON_BASE_URL}/crontab",
+            data=job_data,
             timeout=30
         )
         
         if response.status_code == 200:
             result = response.json()
-            if result.get('status') == 'success':
-                job_data = result.get('data', {})
-                job_id = job_data.get('id')
+            if result.get('status') == 'OK':
+                job_id = result.get('id')
                 print(f"✅ Основное FastCron задание создано! Job ID: {job_id}")
                 print(f"🔗 URL: {WEBHOOK_URL}")
                 print(f"⏰ Расписание: каждые 20 минут (:00, :20, :40)")
                 print(f"🔑 GitHub Token: {GITHUB_TOKEN[:10]}...{GITHUB_TOKEN[-4:]}")
                 return True
             else:
-                error_msg = result.get('message', 'Неизвестная ошибка')
-                print(f"❌ Ошибка FastCron: {error_msg}")
+                print(f"❌ Ошибка FastCron: {result.get('message', 'Неизвестная ошибка')}")
                 return False
         else:
             print(f"❌ Ошибка HTTP {response.status_code}: {response.text}")
@@ -347,15 +265,15 @@ def list_existing_jobs():
     
     try:
         response = requests.get(
-            f"{FASTCRON_BASE_URL}/v1/cron_list",
+            f"{FASTCRON_BASE_URL}/crontab",
             params={'token': FASTCRON_API_KEY},
             timeout=30
         )
         
         if response.status_code == 200:
             result = response.json()
-            if result.get('status') == 'success':
-                crons = result.get('data', [])
+            if result.get('status') == 'OK':
+                crons = result.get('crons', [])
                 print(f"📋 Найдено {len(crons)} заданий FastCron:")
                 print("=" * 80)
                 
@@ -374,11 +292,11 @@ def list_existing_jobs():
                         job_id = job.get('id')
                         name = job.get('name', 'Без названия')
                         status = job.get('status', 0)
-                        expression = job.get('expression', '')
+                        cron_expr = job.get('cron', '')
                         
                         status_text = "🟢 Активно" if status == 1 else "🔴 Отключено"
                         print(f"  {status_text} ID: {job_id} - {name}")
-                        print(f"    Cron: {expression}")
+                        print(f"    Cron: {cron_expr}")
                 
                 if other_jobs:
                     print(f"\n📌 Другие задания ({len(other_jobs)}):")
@@ -390,8 +308,7 @@ def list_existing_jobs():
                         status_text = "🟢 Активно" if status == 1 else "🔴 Отключено"
                         print(f"  {status_text} ID: {job_id} - {name}")
             else:
-                error_msg = result.get('message', 'Неизвестная ошибка')
-                print(f"❌ Ошибка FastCron: {error_msg}")
+                print(f"❌ Ошибка FastCron: {result.get('message', 'Неизвестная ошибка')}")
         else:
             print(f"❌ Ошибка HTTP {response.status_code}: {response.text}")
             
@@ -405,23 +322,19 @@ def delete_job(job_id: str):
         return False
     
     try:
-        response = requests.get(
-            f"{FASTCRON_BASE_URL}/v1/cron_delete",
-            params={
-                'token': FASTCRON_API_KEY,
-                'id': job_id
-            },
+        response = requests.delete(
+            f"{FASTCRON_BASE_URL}/crontab/{job_id}",
+            params={'token': FASTCRON_API_KEY},
             timeout=30
         )
         
         if response.status_code == 200:
             result = response.json()
-            if result.get('status') == 'success':
+            if result.get('status') == 'OK':
                 print(f"✅ FastCron задание {job_id} удалено успешно")
                 return True
             else:
-                error_msg = result.get('message', 'Неизвестная ошибка')
-                print(f"❌ Ошибка FastCron: {error_msg}")
+                print(f"❌ Ошибка FastCron: {result.get('message', 'Неизвестная ошибка')}")
                 return False
         else:
             print(f"❌ Ошибка HTTP {response.status_code}: {response.text}")
@@ -439,10 +352,10 @@ def main():
         print("🔧 SETUP FASTCRON - Управление заданиями FastCron.com")
         print("=" * 50)
         print("Использование:")
-        print("  python setup_fastcron_fixed.py list        - показать все задания")
-        print("  python setup_fastcron_fixed.py create      - создать основное задание")
-        print("  python setup_fastcron_fixed.py delete <ID> - удалить задание по ID")
-        print("  python setup_fastcron_fixed.py test        - тестировать подключения")
+        print("  python setup_fastcron.py list        - показать все задания")
+        print("  python setup_fastcron.py create      - создать основное задание")
+        print("  python setup_fastcron.py delete <ID> - удалить задание по ID")
+        print("  python setup_fastcron.py test        - тестировать подключения")
         return
     
     command = sys.argv[1].lower()
@@ -457,11 +370,6 @@ def main():
     elif command == 'test':
         print("🔧 ТЕСТИРОВАНИЕ FASTCRON ПОДКЛЮЧЕНИЙ")
         print("=" * 50)
-        # Показываем текущие значения переменных (без токенов)
-        print(f"FASTCRON_API_KEY: {'✅ установлен' if FASTCRON_API_KEY else '❌ не установлен'}")
-        print(f"WEBHOOK_URL: {WEBHOOK_URL if WEBHOOK_URL else '❌ не установлен'}")
-        print(f"GH_TOKEN: {'✅ установлен' if GITHUB_TOKEN else '❌ не установлен'}")
-        print()
         validate_environment()
         test_fastcron_connection()
         test_github_connection()
