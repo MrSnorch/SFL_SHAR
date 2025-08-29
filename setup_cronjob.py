@@ -15,7 +15,7 @@ CRONJOB_BASE_URL = 'https://api.cron-job.org'
 # URL для вызова вашего бота (через GitHub Actions)
 # Формат: https://api.github.com/repos/{owner}/{repo}/dispatches
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
-GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
+GITHUB_TOKEN = os.environ.get('GH_TOKEN')
 
 def validate_environment():
     """Проверяет настройки переменных окружения"""
@@ -185,7 +185,7 @@ def create_single_notification_job(notification_time: datetime, retry_count: int
                 return job_id
             elif response.status_code == 429:
                 # Rate limiting - увеличиваем время ожидания
-                wait_time = (attempt + 1) * 15  # 15, 30, 45 секунд
+                wait_time = (attempt + 1) * 25  # 25, 50, 75 секунд
                 print(f"⏳ Rate limit (попытка {attempt + 1}/{retry_count}). Ждем {wait_time} сек...")
                 time.sleep(wait_time)
                 continue
@@ -321,7 +321,7 @@ def list_existing_jobs():
                     other_jobs.append(job)
             
             if floating_jobs:
-                print(f"🏝️ Floating Island задания ({len(floating_jobs)}):")
+                print(f"🎈 Floating Island задания ({len(floating_jobs)}):")
                 for job in floating_jobs:
                     job_id = job.get('jobId')
                     title = job.get('title', 'Без названия')
