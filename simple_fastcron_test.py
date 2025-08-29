@@ -8,15 +8,35 @@ from datetime import datetime, timedelta
 import pytz
 
 # Настройки для теста
-FASTCRON_API_KEY = os.environ.get('FASTCRON_API_KEY', 'your-fastcron-api-key')
+FASTCRON_API_KEY = os.environ.get('FASTCRON_API_KEY')
 FASTCRON_BASE_URL = 'https://app.fastcron.com/api'
 
 # Тестовые параметры
-WEBHOOK_URL = os.environ.get('WEBHOOK_URL', 'https://api.github.com/repos/test/test/actions/workflows/12345/dispatches')
-GITHUB_TOKEN = os.environ.get('GH_TOKEN', 'ghp_test-token')
+WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
+GITHUB_TOKEN = os.environ.get('GH_TOKEN')
+
+def validate_environment():
+    """Проверяем наличие необходимых переменных окружения"""
+    missing = []
+    if not FASTCRON_API_KEY:
+        missing.append('FASTCRON_API_KEY')
+    if not WEBHOOK_URL:
+        missing.append('WEBHOOK_URL')
+    if not GITHUB_TOKEN:
+        missing.append('GH_TOKEN')
+    
+    if missing:
+        print(f"❌ Отсутствуют переменные окружения: {', '.join(missing)}")
+        return False
+    
+    print("✅ Все переменные окружения установлены")
+    return True
 
 def test_fastcron_post_request():
     """Тест POST запроса к FastCron API"""
+    if not validate_environment():
+        return False
+        
     print("🔍 ТЕСТИРОВАНИЕ POST ЗАПРОСА К FASTCRON API")
     print("=" * 50)
     
@@ -69,7 +89,6 @@ def test_fastcron_post_request():
         )
         
         print(f"📥 Статус ответа: {response.status_code}")
-        print(f"📥 Заголовки ответа: {dict(response.headers)}")
         
         # Пытаемся получить JSON ответ
         try:
@@ -104,6 +123,10 @@ def test_fastcron_post_request():
 
 def delete_test_job(job_id):
     """Удаляем тестовое задание после создания"""
+    if not FASTCRON_API_KEY:
+        print("❌ Не установлен FASTCRON_API_KEY для удаления задания")
+        return
+        
     print(f"\n🗑️ Удаляем тестовое задание {job_id}...")
     
     try:
@@ -130,6 +153,10 @@ def delete_test_job(job_id):
 
 def test_fastcron_list():
     """Тест получения списка заданий"""
+    if not FASTCRON_API_KEY:
+        print("❌ Не установлен FASTCRON_API_KEY для получения списка заданий")
+        return False
+        
     print("\n📋 ТЕСТИРОВАНИЕ ПОЛУЧЕНИЯ СПИСКА ЗАДАНИЙ")
     print("=" * 50)
     
@@ -168,16 +195,6 @@ def test_fastcron_list():
 if __name__ == "__main__":
     print("🚀 ТЕСТ FASTCRON API")
     print("=" * 50)
-    
-    # Проверяем наличие API ключа
-    if FASTCRON_API_KEY == 'your-fastcron-api-key':
-        print("⚠️  Не установлен FASTCRON_API_KEY")
-        print("💡 Установите переменную окружения или измените значение в скрипте")
-        exit(1)
-    
-    print(f"🔑 API ключ: {FASTCRON_API_KEY[:10]}...{FASTCRON_API_KEY[-4:]}")
-    print(f"🔗 Базовый URL: {FASTCRON_BASE_URL}")
-    print()
     
     # Выполняем тесты
     success1 = test_fastcron_post_request()
