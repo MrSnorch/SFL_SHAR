@@ -30,14 +30,14 @@ def validate_environment():
         errors.append("❌ WEBHOOK_URL должен быть GitHub API URL: https://api.github.com/repos/{owner}/{repo}/dispatches")
     
     if not GITHUB_TOKEN:
-        errors.append("❌ Не установлена переменная GITHUB_TOKEN")
+        errors.append("❌ Не установлена переменная GH_TOKEN")
     
     if errors:
         print("\n".join(errors))
         print("\n💡 Инструкции по настройке:")
         print("1. CRONJOB_API_KEY - API ключ с сайта cron-job.org")
         print("2. WEBHOOK_URL - https://api.github.com/repos/{username}/{repo}/dispatches")
-        print("3. GITHUB_TOKEN - Personal Access Token с правами 'repo' и 'workflow'")
+        print("3. GH_TOKEN - Personal Access Token с правами 'repo' и 'workflow'")
         return False
     
     return True
