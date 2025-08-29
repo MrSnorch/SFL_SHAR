@@ -21,7 +21,7 @@ EVENT_DURATION = timedelta(minutes=30)  # Продолжительность с�
 
 # Настройки для webhook
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
-GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
+GITHUB_TOKEN = os.environ.get('GH_TOKEN')
 
 def validate_webhook_url(url):
     """Проверяет правильность формата webhook URL"""
