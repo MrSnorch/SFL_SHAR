@@ -15,7 +15,7 @@ CRONJOB_BASE_URL = 'https://api.cron-job.org'
 
 # URL для вызова вашего бота
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
-GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
+GITHUB_TOKEN = os.environ.get('GH_TOKEN')
 
 def validate_environment():
     """Проверяет настройки переменных окружения"""
@@ -111,7 +111,7 @@ def create_precise_notification_job(notification_time: datetime, title: str = No
                 return job_id
             elif response.status_code == 429:
                 # Rate limiting - увеличиваем время ожидания прогрессивно
-                wait_time = (attempt + 1) * 20  # 20, 40, 60 секунд
+                wait_time = (attempt + 1) * 30  # 30, 60, 90 секунд
                 print(f"⏳ Rate limit (попытка {attempt + 1}/{retry_count}). Ждем {wait_time} сек...")
                 time.sleep(wait_time)
                 continue
@@ -225,6 +225,10 @@ def schedule_floating_island_sequence(start_date: datetime = None, count: int = 
     print(f"⏰ Начиная с: {start_date.strftime('%d.%m.%Y %H:%M')} UTC")
     print("=" * 60)
     
+    # Начальная пауза для предотвращения rate limiting
+    print("⏳ Начальная пауза 10 секунд...")
+    time.sleep(10)
+    
     # Сначала очищаем старые задания
     print("🧹 Очищаем старые задания...")
     cleanup_old_jobs()
@@ -252,7 +256,7 @@ def schedule_floating_island_sequence(start_date: datetime = None, count: int = 
         
         print(f"\n📌 Планируем событие {i}/{len(events)}:")
         print(f"   📢 Уведомление: {notification_time.strftime('%d.%m.%Y %H:%M')} UTC")
-        print(f"   🏝️ Событие: {event_start.strftime('%d.%m.%Y %H:%M')} UTC")
+        print(f"   🎈 Событие: {event_start.strftime('%d.%m.%Y %H:%M')} UTC")
         
         # Вычисляем время до уведомления
         time_until = (notification_time - start_date).total_seconds()
@@ -272,11 +276,11 @@ def schedule_floating_island_sequence(start_date: datetime = None, count: int = 
         # Прогрессивная пауза между запросами для избежания rate limiting
         if i < len(events) and i % 5 == 0:
             # Большая пауза каждые 5 заданий
-            print(f"   ⏸️ Пауза 30 секунд (каждые 5 заданий)...")
-            time.sleep(30)
+            print(f"   ⏸️ Пауза 60 секунд (каждые 5 заданий)...")
+            time.sleep(60)
         elif i < len(events):
             # Обычная пауза
-            time.sleep(12)  # Увеличиваем паузу до 12 секунд
+            time.sleep(20)  # Увеличиваем паузу до 20 секунд
     
     print(f"\n" + "=" * 60)
     print(f"📊 ИТОГИ ПЛАНИРОВАНИЯ:")
