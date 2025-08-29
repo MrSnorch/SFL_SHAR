@@ -28,7 +28,7 @@ def validate_environment():
         return False
     
     if not GITHUB_TOKEN:
-        print("❌ Не установлена переменная GITHUB_TOKEN")
+        print("❌ Не установлена переменная GH_TOKEN")
         return False
     
     print("✅ Все переменные окружения настроены")
