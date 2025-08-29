@@ -53,19 +53,21 @@ def create_precise_notification_job(notification_time: datetime, title: str = No
     if not title:
         title = f"Floating Island {notification_time.strftime('%d.%m %H:%M')} UTC"
     
-    # Правильный формат POST данных для GitHub workflow dispatch - только разрешенные параметры
+    # Подготавливаем POST данные для GitHub webhook
     post_data = json.dumps({
-        'ref': 'main',
-        'inputs': {
-            'action': 'notify'
-        }
+        'event_type': 'floating_island_notification',
+        'client_payload': {
+            'notification_time': notification_time.isoformat(),
+            'precision': 'exact'
+        },
+        'ref': 'main'
     })
     
     # HTTP заголовки для GitHub API
     http_headers = f"Authorization: token {GITHUB_TOKEN}\\r\\nAccept: application/vnd.github.v3+json\\r\\nContent-Type: application/json"
     
-    # Параметры для FastCron API
-    params = {
+    # Параметры для FastCron API (используем POST с правильным форматом)
+    payload = {
         'token': FASTCRON_API_KEY,
         'name': title,
         'expression': cron_expression,
@@ -80,9 +82,9 @@ def create_precise_notification_job(notification_time: datetime, title: str = No
     # FastCron более терпим к частым запросам
     for attempt in range(retry_count):
         try:
-            response = requests.get(
+            response = requests.post(
                 f"{FASTCRON_BASE_URL}/v1/cron_add",
-                params=params,
+                json=payload,
                 timeout=30
             )
             

@@ -76,10 +76,10 @@ def test_fastcron_connection():
         return False
     
     try:
-        # Используем правильный эндпоинт FastCron
-        response = requests.get(
+        # Используем правильный эндпоинт FastCron с POST запросом
+        response = requests.post(
             f"{FASTCRON_BASE_URL}/v1/cron_list",
-            params={'token': FASTCRON_API_KEY},
+            json={'token': FASTCRON_API_KEY},
             timeout=10
         )
         
@@ -202,19 +202,21 @@ def create_single_notification_job(notification_time: datetime, retry_count: int
     
     title = f"Floating Island {notification_time.strftime('%d.%m %H:%M')} UTC"
     
-    # Правильный формат POST данных для GitHub workflow dispatch - только разрешенные параметры
+    # Подготавливаем POST данные для GitHub webhook (новый формат)
     post_data = json.dumps({
-        'ref': 'main',
-        'inputs': {
-            'action': 'notify'
-        }
+        "event_type": "floating_island_notification",
+        "client_payload": {
+            "notification_time": notification_time.isoformat(),
+            "auto_scheduled": True
+        },
+        "ref": "main"
     })
     
     # HTTP заголовки для GitHub API
     http_headers = f"Authorization: token {GITHUB_TOKEN}\\r\\nAccept: application/vnd.github.v3+json\\r\\nContent-Type: application/json"
     
-    # Параметры для FastCron API
-    params = {
+    # Параметры для FastCron API (используем POST с правильным форматом)
+    payload = {
         'token': FASTCRON_API_KEY,
         'name': title,
         'expression': cron_expression,
@@ -228,9 +230,9 @@ def create_single_notification_job(notification_time: datetime, retry_count: int
     
     for attempt in range(retry_count):
         try:
-            response = requests.get(
+            response = requests.post(
                 f"{FASTCRON_BASE_URL}/v1/cron_add",
-                params=params,
+                json=payload,
                 timeout=30
             )
             
@@ -282,19 +284,20 @@ def create_fastcron_schedule():
     if not test_github_connection():
         return False
     
-    # Правильный формат POST данных для GitHub workflow dispatch - только разрешенные параметры
+    # Подготавливаем POST данные для GitHub webhook
     post_data = json.dumps({
-        'ref': 'main',
-        'inputs': {
-            'action': 'notify'
-        }
+        'event_type': 'floating_island_check',
+        'client_payload': {
+            'type': 'periodic_check'
+        },
+        'ref': 'main'
     })
     
     # HTTP заголовки для GitHub API
     http_headers = f"Authorization: token {GITHUB_TOKEN}\\r\\nAccept: application/vnd.github.v3+json\\r\\nContent-Type: application/json"
     
     # Создаем задание, которое запускается каждые 20 минут
-    params = {
+    payload = {
         'token': FASTCRON_API_KEY,
         'name': 'Floating Island Notifications Checker',
         'expression': '0,20,40 * * * *',  # каждые 20 минут
@@ -307,9 +310,9 @@ def create_fastcron_schedule():
     }
     
     try:
-        response = requests.get(
+        response = requests.post(
             f"{FASTCRON_BASE_URL}/v1/cron_add",
-            params=params,
+            json=payload,
             timeout=30
         )
         
