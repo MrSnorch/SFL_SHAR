@@ -49,7 +49,7 @@ def validate_environment():
     if not WEBHOOK_URL:
         missing.append("WEBHOOK_URL") 
     if not GITHUB_TOKEN:
-        missing.append("GITHUB_TOKEN")
+        missing.append("GH_TOKEN")
     if not TELEGRAM_BOT_TOKEN:
         missing.append("TELEGRAM_BOT_TOKEN")
     if not TELEGRAM_CHAT_ID:
@@ -69,7 +69,7 @@ def validate_environment():
         print("\n💡 Инструкции по настройке:")
         print("1. FASTCRON_API_KEY - API ключ с сайта fastcron.com")
         print("2. WEBHOOK_URL - https://api.github.com/repos/{username}/{repo}/dispatches")
-        print("3. GITHUB_TOKEN - Personal Access Token с правами 'repo' и 'workflow'")
+        print("3. GH_TOKEN - Personal Access Token с правами 'repo' и 'workflow'")
         print("4. TELEGRAM_BOT_TOKEN - Токен Telegram бота")
         print("5. TELEGRAM_CHAT_ID - ID чата для уведомлений")
         return False
