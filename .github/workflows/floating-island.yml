@@ -53,7 +53,7 @@ jobs:
           CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
           FASTCRON_API_KEY: ${{ secrets.FASTCRON_API_KEY }}
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           echo "=== FLOATING ISLAND NOTIFICATION ==="
           echo "Время запуска: $(date -u)"
@@ -96,7 +96,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           echo "=== SINGLE SCHEDULING FLOATING ISLAND ==="
           echo "Время запуска: $(date -u)"
@@ -127,7 +127,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           FASTCRON_API_KEY: ${{ secrets.FASTCRON_API_KEY }}
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           echo "=== FASTCRON SCHEDULING FLOATING ISLAND ==="
           echo "Время запуска: $(date -u)"
@@ -160,7 +160,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           FASTCRON_API_KEY: ${{ secrets.FASTCRON_API_KEY }}
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           echo "=== TEST NOTIFICATION SYSTEM ==="
           echo "Время запуска: $(date -u)"
@@ -190,7 +190,7 @@ jobs:
         env:
           FASTCRON_API_KEY: ${{ secrets.FASTCRON_API_KEY }}
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           echo "=== FASTCRON CONNECTION TEST ==="
           echo "Время запуска: $(date -u)"
@@ -198,121 +198,3 @@ jobs:
           echo "=== END FASTCRON TEST ==="
 
   schedule:
-    if: github.event.action == 'floating_island_schedule' || github.event.inputs.action == 'schedule'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Schedule floating island notifications
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
-          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "=== SCHEDULING FLOATING ISLAND ==="
-          echo "Время запуска: $(date -u)"
-          COUNT="${{ github.event.inputs.count || github.event.client_payload.count || '30' }}"
-          echo "Планируем $COUNT событий"
-          python scheduler.py schedule $COUNT
-          echo "=== END SCHEDULING ==="
-
-  cleanup:
-    if: github.event.inputs.action == 'cleanup'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Cleanup old jobs
-        env:
-          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
-          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "=== CLEANUP OLD JOBS ==="
-          echo "Время запуска: $(date -u)"
-          python scheduler.py cleanup
-          echo "=== END CLEANUP ==="
-
-  list:
-    if: github.event.inputs.action == 'list'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: List scheduled jobs
-        env:
-          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
-          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "=== LIST SCHEDULED JOBS ==="
-          echo "Время запуска: $(date -u)"
-          python scheduler.py list
-          echo "=== END LIST ==="
-
-  setup:
-    if: github.event.inputs.action == 'setup'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Setup cron job
-        env:
-          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
-          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "=== SETUP CRON JOB ==="
-          echo "Время запуска: $(date -u)"
-          python setup_cronjob.py create
-          echo "=== END SETUP ==="
