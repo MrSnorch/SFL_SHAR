@@ -15,7 +15,8 @@ FASTCRON_BASE_URL = 'https://app.fastcron.com/api'
 # URL для вызова вашего бота (через GitHub Actions)
 # Формат: https://api.github.com/repos/{owner}/{repo}/dispatches
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
-GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
+GITHUB_TOKEN = os.environ.get('GH_TOKEN')
+
 
 def validate_environment():
     """Проверяет настройки переменных окружения"""
@@ -27,13 +28,22 @@ def validate_environment():
     if not WEBHOOK_URL:
         errors.append("❌ Не установлена переменная WEBHOOK_URL")
     else:
-        # Проверяем формат URL
+        # Проверяем формат URL для GitHub Actions
         if not WEBHOOK_URL.startswith('https://api.github.com/repos/'):
-        errors.append("❌ WEBHOOK_URL должен быть GitHub API URL: https://api.github.com/repos/{owner}/{repo}/dispatches")
+            errors.append("❌ WEBHOOK_URL должен быть GitHub API URL: https://api.github.com/repos/{owner}/{repo}/dispatches")
+        elif '/actions/workflows/' in WEBHOOK_URL:
+            # Правильный формат для workflow dispatches
+            if not WEBHOOK_URL.endswith('/dispatches'):
+                errors.append("❌ WEBHOOK_URL для workflow должен заканчиваться на /dispatches")
+            else:
+                # Проверяем структуру workflow URL
+                url_parts = WEBHOOK_URL.replace('https://api.github.com/repos/', '').split('/')
+                if len(url_parts) < 4 or url_parts[-1] != 'dispatches':
+                    errors.append("❌ Неправильный формат workflow WEBHOOK_URL")
         elif not WEBHOOK_URL.endswith('/dispatches'):
             errors.append("❌ WEBHOOK_URL должен заканчиваться на /dispatches")
         else:
-            # Проверяем структуру URL
+            # Проверяем структуру базового URL
             url_parts = WEBHOOK_URL.replace('https://api.github.com/repos/', '').replace('/dispatches', '').split('/')
             if len(url_parts) != 2 or not all(url_parts):
                 errors.append("❌ Неправильный формат WEBHOOK_URL. Должно быть: https://api.github.com/repos/{owner}/{repo}/dispatches")
@@ -50,6 +60,7 @@ def validate_environment():
         return False
     
     return True
+
 
 def test_fastcron_connection():
     """Тестирует подключение к FastCron API"""
