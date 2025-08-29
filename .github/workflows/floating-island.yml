@@ -198,3 +198,92 @@ jobs:
           echo "=== END FASTCRON TEST ==="
 
   schedule:
+    if: github.event.inputs.action == 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Schedule floating island events
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          echo "=== SCHEDULING FLOATING ISLAND EVENTS ==="
+          echo "Время запуска: $(date -u)"
+          COUNT="${{ github.event.inputs.count || '30' }}"
+          echo "Планируем $COUNT событий"
+          python scheduler.py schedule $COUNT
+          echo "=== END SCHEDULING ==="
+
+  cleanup:
+    if: github.event.inputs.action == 'cleanup'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Cleanup old jobs
+        env:
+          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
+          FASTCRON_API_KEY: ${{ secrets.FASTCRON_API_KEY }}
+        run: |
+          echo "=== CLEANING UP OLD JOBS ==="
+          echo "Время запуска: $(date -u)"
+          python scheduler.py cleanup
+          python fastcron_scheduler_fixed.py cleanup
+          echo "=== END CLEANUP ==="
+
+  list:
+    if: github.event.inputs.action == 'list'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: List scheduled jobs
+        env:
+          CRONJOB_API_KEY: ${{ secrets.CRONJOB_API_KEY }}
+          FASTCRON_API_KEY: ${{ secrets.FASTCRON_API_KEY }}
+        run: |
+          echo "=== LISTING SCHEDULED JOBS ==="
+          echo "Время запуска: $(date -u)"
+          python scheduler.py list
+          python fastcron_scheduler_fixed.py list
+          echo "=== END LISTING ==="
