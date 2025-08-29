@@ -53,13 +53,11 @@ def create_precise_notification_job(notification_time: datetime, title: str = No
     if not title:
         title = f"Floating Island {notification_time.strftime('%d.%m %H:%M')} UTC"
     
-    # Правильный формат POST данных для GitHub workflow dispatch
+    # Правильный формат POST данных для GitHub workflow dispatch - только разрешенные параметры
     post_data = json.dumps({
         'ref': 'main',
         'inputs': {
-            'action': 'notify',
-            'notification_time': notification_time.isoformat(),
-            'precision': 'exact'
+            'action': 'notify'
         }
     })
     

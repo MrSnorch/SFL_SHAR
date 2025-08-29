@@ -86,9 +86,7 @@ def create_precise_notification_job(notification_time: datetime, title: str = No
             'requestBody': json.dumps({
                 'ref': 'main',
                 'inputs': {
-                    'action': 'notify',
-                    'notification_time': notification_time.isoformat(),
-                    'precision': 'exact'
+                    'action': 'notify'
                 }
             })
         }

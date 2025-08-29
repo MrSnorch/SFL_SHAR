@@ -134,13 +134,11 @@ def test_github_connection():
         'Content-Type': 'application/json'
     }
     
-    # Правильный формат payload для workflow dispatches
+    # Правильный формат payload для workflow dispatches - только разрешенные параметры
     test_payload = {
         'ref': 'main',  # Обязательное поле
-        'inputs': {     # Используем "inputs" вместо "client_payload"
-            'action': 'test',
-            'test': 'true',
-            'timestamp': datetime.now(pytz.UTC).isoformat()
+        'inputs': {     # Только разрешенные параметры из workflow файла
+            'action': 'test'
         }
     }
     
@@ -204,13 +202,11 @@ def create_single_notification_job(notification_time: datetime, retry_count: int
     
     title = f"Floating Island {notification_time.strftime('%d.%m %H:%M')} UTC"
     
-    # Правильный формат POST данных для GitHub workflow dispatch
+    # Правильный формат POST данных для GitHub workflow dispatch - только разрешенные параметры
     post_data = json.dumps({
         'ref': 'main',
         'inputs': {
-            'action': 'notify',
-            'notification_time': notification_time.isoformat(),
-            'auto_scheduled': 'true'
+            'action': 'notify'
         }
     })
     
@@ -286,7 +282,7 @@ def create_fastcron_schedule():
     if not test_github_connection():
         return False
     
-    # Правильный формат POST данных для GitHub workflow dispatch
+    # Правильный формат POST данных для GitHub workflow dispatch - только разрешенные параметры
     post_data = json.dumps({
         'ref': 'main',
         'inputs': {

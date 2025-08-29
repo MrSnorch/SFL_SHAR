@@ -156,14 +156,11 @@ def create_test_github_webhook():
         'Content-Type': 'application/json'
     }
     
-    # Правильный формат payload для workflow dispatches
+    # Правильный формат payload для workflow dispatches - только разрешенные параметры
     test_payload = {
         'ref': 'main',  # Обязательное поле
         'inputs': {
-            'action': 'test-send',
-            'notification_time': datetime.now(pytz.UTC).isoformat(),
-            'precision': 'test_immediate',
-            'test_mode': 'true'
+            'action': 'test-send'
         }
     }
     
@@ -205,14 +202,11 @@ def create_test_fastcron_job():
     
     title = f"TEST Floating Island {test_time.strftime('%d.%m %H:%M')} UTC"
     
-    # Правильный формат данных для GitHub workflow dispatch
+    # Правильный формат данных для GitHub workflow dispatch - только разрешенные параметры
     post_data = json.dumps({
         'ref': 'main',
         'inputs': {
-            'action': 'notify',
-            'notification_time': test_time.isoformat(),
-            'precision': 'test',
-            'test_mode': 'true'
+            'action': 'notify'
         }
     })
     
