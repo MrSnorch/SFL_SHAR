@@ -26,8 +26,17 @@ def validate_environment():
     
     if not WEBHOOK_URL:
         errors.append("❌ Не установлена переменная WEBHOOK_URL")
-    elif not WEBHOOK_URL.startswith('https://api.github.com/repos/'):
+    else:
+        # Проверяем формат URL
+        if not WEBHOOK_URL.startswith('https://api.github.com/repos/'):
         errors.append("❌ WEBHOOK_URL должен быть GitHub API URL: https://api.github.com/repos/{owner}/{repo}/dispatches")
+        elif not WEBHOOK_URL.endswith('/dispatches'):
+            errors.append("❌ WEBHOOK_URL должен заканчиваться на /dispatches")
+        else:
+            # Проверяем структуру URL
+            url_parts = WEBHOOK_URL.replace('https://api.github.com/repos/', '').replace('/dispatches', '').split('/')
+            if len(url_parts) != 2 or not all(url_parts):
+                errors.append("❌ Неправильный формат WEBHOOK_URL. Должно быть: https://api.github.com/repos/{owner}/{repo}/dispatches")
     
     if not GITHUB_TOKEN:
         errors.append("❌ Не установлена переменная GITHUB_TOKEN")
@@ -82,22 +91,42 @@ def test_github_connection():
     if not WEBHOOK_URL or not GITHUB_TOKEN:
         return False
     
+    # Извлекаем owner и repo из WEBHOOK_URL для формирования правильного URL
+    try:
+        if WEBHOOK_URL.startswith('https://api.github.com/repos/'):
+            url_parts = WEBHOOK_URL.replace('https://api.github.com/repos/', '').split('/')
+            if len(url_parts) >= 2:
+                owner, repo = url_parts[0], url_parts[1]
+                # Новый формат URL для dispatches
+                github_url = f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/184853159/dispatches"
+            else:
+                print("❌ Неправильный формат WEBHOOK_URL")
+                return False
+        else:
+            print("❌ WEBHOOK_URL должен начинаться с https://api.github.com/repos/")
+            return False
+    except Exception as e:
+        print(f"❌ Ошибка разбора WEBHOOK_URL: {e}")
+        return False
+    
     headers = {
         'Authorization': f'token {GITHUB_TOKEN}',
         'Accept': 'application/vnd.github.v3+json',
         'Content-Type': 'application/json'
     }
     
+    # Новый формат payload с обязательным "ref": "main"
     test_payload = {
         'event_type': 'test_fastcron_connection',
         'client_payload': {
             'test': True,
             'timestamp': datetime.now(pytz.UTC).isoformat()
-        }
+        },
+        'ref': 'main'  # Обязательное поле
     }
     
     try:
-        response = requests.post(WEBHOOK_URL, headers=headers, json=test_payload, timeout=10)
+        response = requests.post(github_url, headers=headers, json=test_payload, timeout=10)
         
         if response.status_code == 204:
             print("✅ Подключение к GitHub API успешно")
@@ -106,7 +135,10 @@ def test_github_connection():
             print("❌ Неверный GitHub токен")
             return False
         elif response.status_code == 404:
-            print("❌ Неверный URL репозитория или нет прав доступа")
+            print("❌ Workflow не найден или нет прав доступа")
+            return False
+        elif response.status_code == 403:
+            print("❌ Нет прав доступа (проверьте scope токена)")
             return False
         else:
             print(f"⚠️ Проблема с подключением к GitHub: {response.status_code}")
@@ -124,6 +156,24 @@ def create_single_notification_job(notification_time: datetime, retry_count: int
     if not validate_environment():
         return False
     
+    # Извлекаем owner и repo из WEBHOOK_URL для формирования правильного URL
+    try:
+        if WEBHOOK_URL.startswith('https://api.github.com/repos/'):
+            url_parts = WEBHOOK_URL.replace('https://api.github.com/repos/', '').split('/')
+            if len(url_parts) >= 2:
+                owner, repo = url_parts[0], url_parts[1]
+                # Новый формат URL для dispatches
+                github_dispatch_url = f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/184853159/dispatches"
+            else:
+                print("❌ Неправильный формат WEBHOOK_URL")
+                return False
+        else:
+            print("❌ WEBHOOK_URL должен начинаться с https://api.github.com/repos/")
+            return False
+    except Exception as e:
+        print(f"❌ Ошибка разбора WEBHOOK_URL: {e}")
+        return False
+    
     # FastCron использует стандартный cron формат
     minute = notification_time.minute
     hour = notification_time.hour
@@ -135,13 +185,14 @@ def create_single_notification_job(notification_time: datetime, retry_count: int
     
     title = f"Floating Island {notification_time.strftime('%d.%m %H:%M')} UTC"
     
-    # Подготавливаем POST данные для GitHub webhook
+    # Подготавливаем POST данные для GitHub webhook (новый формат)
     post_data = json.dumps({
-        'event_type': 'floating_island_notification',
-        'client_payload': {
-            'notification_time': notification_time.isoformat(),
-            'auto_scheduled': True
-        }
+        "event_type": "floating_island_notification",
+        "client_payload": {
+            "notification_time": notification_time.isoformat(),
+            "auto_scheduled": True
+        },
+        "ref": "main"
     })
     
     # HTTP заголовки для GitHub API
@@ -152,7 +203,7 @@ def create_single_notification_job(notification_time: datetime, retry_count: int
         'token': FASTCRON_API_KEY,
         'name': title,
         'expression': cron_expression,
-        'url': WEBHOOK_URL,
+        'url': github_dispatch_url,  # Используем правильный URL
         'httpMethod': 'POST',
         'postData': post_data,
         'httpHeaders': http_headers,
@@ -299,7 +350,7 @@ def list_existing_jobs():
                         other_jobs.append(cron)
                 
                 if floating_jobs:
-                    print(f"🏝️ Floating Island задания ({len(floating_jobs)}):")
+                    print(f"🎈 Floating Island задания ({len(floating_jobs)}):")
                     for job in floating_jobs:
                         job_id = job.get('id')
                         name = job.get('name', 'Без названия')
